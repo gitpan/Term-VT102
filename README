@@ -1,0 +1,17 @@
+This is the README file for Term::VT102, a Perl module which provides
+emulation of a VT102 terminal.
+
+Like the "expect" Tcl extension, this module is intended primarily for use
+as a way of automating processes; for instance, you can write a script which
+connects via telnet to a full-screen service of some kind (such as
+Monochrome BBS, http://www.mono.org/), uses this module to parse the output,
+and therefore can tell what is currently "on the screen" and react
+accordingly.  Expect cannot really do this, as it is stream-oriented, rather
+than being able to tell you, say, what's on the top row of the screen.
+
+For installation instructions, see the INSTALL file.
+
+Term::VT102 was written by Andrew Wood <andrew.wood@ivarch.com>; send flames,
+bug reports, conversation, and all that sort of thing in that direction.
+
+$Id: README,v 1.2 2001/05/20 16:58:20 ivarch Exp $
