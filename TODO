@@ -3,6 +3,5 @@ Things still to do:
   - functions for Expect-like behaviour
   - method to return row text with ANSI escape sequences
   - implement tab stops
-  - implement XON/XOFF
 
 Any assistance would be appreciated.

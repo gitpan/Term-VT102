@@ -12,7 +12,7 @@ BEGIN {
 	use Exporter ();
 	use vars qw($VERSION @ISA);
 
-	$VERSION = '0.79';
+	$VERSION = '0.80';
 
 	@ISA = qw(Exporter);
 }
@@ -286,7 +286,7 @@ sub new {
 	      'VEM' => undef,         # vertical editing mode
 	      'VPA' => \&_code_VPA,   # move to row (current column)
 	      'VPR' => \&_code_CUD,   # move cursor down
-	      'XON' => undef,         # resume transmission
+	      'XON' => \&_code_XON,   # resume transmission
 	     'FEAM' => undef,         # format effector action mode
 	     'FETM' => undef,         # format effector transfer mode
 	     'GATM' => undef,         # guarded-area transfer mode
@@ -296,7 +296,7 @@ sub new {
 	     'MATM' => undef,         # multiple area transfer mode
 	     'SATM' => undef,         # selected area transfer mode
 	     'SRTM' => undef,         # status-reporting transfer mode
-	     'XOFF' => undef,         # stop transmission, ignore characters
+	     'XOFF' => \&_code_XOFF,  # stop transmission, ignore characters
 	    'CSDFL' => undef,         # select default charset (ISO646/8859-1)
 	    'CUPRS' => \&_code_CUPRS, # restore cursor position
 	    'CUPSV' => \&_code_CUPSV, # save cursor position
@@ -357,6 +357,7 @@ sub new {
 
 	$self->{'_decsc'} = [ () ];       # saved state for DECSC/DECRC
 	$self->{'_cupsv'} = [ () ];       # saved state for CUPSV/CUPRS
+	$self->{'_xon'} = 1;              # state is XON (characters accepted)
 
 	$self->{'cols'} = 80;     # default: 80 columns
 	$self->{'rows'} = 24;     # default: 24 rows
@@ -418,6 +419,7 @@ sub reset {
 	$self->{'opts'} = {};                 # blank all options
 	$self->{'opts'}->{'LINEWRAP'} = 0;    # line wrapping off
 	$self->{'opts'}->{'LFTOCRLF'} = 0;    # don't map LF -> CRLF
+	$self->{'opts'}->{'IGNOREXOFF'} = 1;  # ignore XON/XOFF by default
 
 	$self->{'scrt'} = [ () ];             # blank screen text
 	$self->{'scra'} = [ () ];             # blank screen attributes
@@ -431,6 +433,7 @@ sub reset {
 
 	$self->{'_buf'} = undef;              # blank the esc-sequence buffer
 	$self->{'_inesc'} = 0;                # not in any escape sequence
+	$self->{'_xon'} = 1;                  # state is XON (chars accepted)
 
 	$self->{'cursor'} = 1;                # turn cursor on
 }
@@ -675,6 +678,8 @@ sub _process_text {
 	my ($text) = @_;
 	my ($width, $segment);
 
+	return if ($self->{'_xon'} == 0);
+
 	$width = ($self->{'cols'} + 1) - $self->{'x'};
 
 	if ($self->{'opts'}->{'LINEWRAP'} == 0) {     # no line wrap - truncate
@@ -731,6 +736,12 @@ sub _process_ctl {
 	$name = $self->{'_ctlseq'}->{$ctl};
 	return if (not defined $name);        # ignore unknown characters
 
+	# If we're in XOFF mode, ignore anything other than XON
+	#
+	if ($self->{'_xon'} == 0) {
+		return if ($name ne 'XON');
+	}
+
 	$func = $self->{'_funcs'}->{$name};
 	if (not defined $func) {              # do nothing if unsupported
 		$self->callback_call ('UNKNOWN', $name, $ctl);
@@ -749,6 +760,7 @@ sub _process_escseq {
 
 	return if (not defined $self->{'_buf'});
 	return if (length $self->{'_buf'} < 1);
+	return if ($self->{'_xon'} == 0);
 
 	if ($self->{'_inesc'} == 3) {                 # in OSC sequence
 		if (
@@ -1550,6 +1562,17 @@ sub _code_CUPRS {                       # restore cursor position
 	$self->{'_cupsv'} = [ @state ];
 }
 
+sub _code_XON {                         # resume character processing
+	my $self = shift;
+	$self->{'_xon'} = 1;
+}
+
+sub _code_XOFF {                        # stop character processing
+	my $self = shift;
+	return if ($self->{'opts'}->{'IGNOREXOFF'});
+	$self->{'_xon'} = 0;
+}
+
 1;
 __END__
 
@@ -1587,6 +1610,7 @@ using the B<option_read()> and B<option_set()> methods:
 
   LINEWRAP      line wrapping; 1=on, 0=off. Default is OFF.
   LFTOCRLF      treat LF (\n) as CRLF (\r\n); 1=on, 0=off. Default OFF.
+  IGNOREXOFF    ignore XON/XOFF characters; 1=on (ignore). Default ON.
 
 =head1 METHODS
 
@@ -1787,6 +1811,8 @@ The following sequences are supported:
    013 (VT)    line feed
    014 (FF)    line feed
    015 (CR)    carriage return
+   021 (XON)   resume transmission (only if option IGNOREXOFF is cleared)
+   023 (XOFF)  stop transmission (only if option IGNOREXOFF is cleared)
    030 (CAN)   interrupt escape sequence
    032 (SUB)   interrupt escape sequence
    033 (ESC)   start escape sequence
@@ -1835,8 +1861,6 @@ The following known control characters / sequences are ignored:
    005 (ENQ)   trigger answerback message
    016 (SO)    activate G1 charset, carriage return
    017 (SI)    activate G0 charset
-   021 (XON)   resume transmission
-   023 (XOFF)  stop transmission
 
 The following known escape sequences are ignored:
 

@@ -1,5 +1,8 @@
 Changes that have been made over time:
 
+0.80 - 25 April 2004
+  + implemented XON/XOFF and added new option IGNOREXOFF
+
 0.79 - 9 December 2003
   + documentation additions
   + investigated bug reported by Paul Stoddard
