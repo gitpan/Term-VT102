@@ -6,6 +6,7 @@ Makefile.PL
 README
 TODO
 VT102.pm
+VT102/examples/ssh-usage.pl
 VT102/examples/telnet-usage.pl
 t/01-load.t
 t/02-setsize.t

@@ -12,7 +12,7 @@ BEGIN {
 	use Exporter ();
 	use vars qw($VERSION @ISA);
 
-	$VERSION = '0.80';
+	$VERSION = '0.82';
 
 	@ISA = qw(Exporter);
 }
@@ -1385,7 +1385,8 @@ sub _toggle_mode {                      # set/reset modes
 
 	foreach my $mode (@modes) {
 		my $name = $self->{'_modeseq'}->{$mode};
-		my $func = $self->{'_funcs'}->{$name};
+		my $func = undef;
+		$func = $self->{'_funcs'}->{$name} if (defined $name);
 		if (not defined $func) {                # unsupported seq.
 			$self->callback_call (
 			  'UNKNOWN',
@@ -1912,8 +1913,9 @@ The following known CSI (ESC [) sequences are only partially supported:
 
 =head1 EXAMPLES
 
-For some examples, including how to interface Term::VT102 with Net::Telnet,
-please see the B<examples/> directory in the distribution.
+For some examples, including how to interface Term::VT102 with Net::Telnet
+or a command such as SSH, please see the B<examples/> directory in the
+distribution.
 
 =head1 AUTHORS
 
@@ -1945,7 +1947,7 @@ screen's contents defaults to zeroes, not spaces.
 
 =head1 SEE ALSO
 
-B<console_codes>(4)
+B<console_codes>(4), B<IO::Pty>(3)
 
 =cut
 
