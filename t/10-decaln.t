@@ -2,10 +2,9 @@
 #
 # Test DECALN.
 #
-# Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see COPYING.
 #
-# $Id: 10-decaln.t,v 1.1 2002/08/02 23:33:58 ivarch Exp $
 
 require Term::VT102;
 require 't/testbase';
@@ -31,4 +30,4 @@ run_tests ([(
   ],
 )]);
 
-# EOF $Id: 10-decaln.t,v 1.1 2002/08/02 23:33:58 ivarch Exp $
+# EOF

@@ -3,10 +3,9 @@
 # Make sure the VT102 module can handle line and character insertion and
 # deletion, and line/screen clearing.
 #
-# Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see COPYING.
 #
-# $Id: 06-insdel.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
 
 require Term::VT102;
 require 't/testbase';
@@ -211,4 +210,4 @@ run_tests ([(
   ],
 )]);
 
-# EOF $Id: 06-insdel.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
+# EOF

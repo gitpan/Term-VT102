@@ -2,10 +2,9 @@
 #
 # Make sure the VT102 module can handle ANSI colour, underline, bold, etc.
 #
-# Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see COPYING.
 #
-# $Id: 07-colour.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
 
 require Term::VT102;
 require 't/testbase';
@@ -42,4 +41,4 @@ run_tests ([(
   ],
 )]);
 
-# EOF $Id: 07-colour.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
+# EOF

@@ -12,17 +12,19 @@ tell you, say, what's on the top row of the screen.
 For installation instructions, see the INSTALL file.
 
 Please send bug reports, comments, and whatnot to the project maintainer,
-Andrew Wood <andrew.wood@ivarch.com>.
+Andrew Wood <andrew dot wood at ivarch dot com>.
 
 Credit is also due to:
 
-  Charles Harker <CHarker@interland.com>
+  Charles Harker <CHarker at interland dot com>
     - reported and helped to diagnose a bug in the handling of TABs
 
-  Steve van der Burg <steve.vanderburg@lhsc.on.ca>
+  Steve van der Burg <steve dot vanderburg at lhsc dot on dot ca>
     - supplied basis for an example script using Net::Telnet
 
-  Chris R. Donnelly <cdonnelly@digitalmotorworks.com>
+  Chris R. Donnelly <cdonnelly at digitalmotorworks dot com>
     - added support for DECTCEM, partial support for SM/RM
 
-$Id: README,v 1.4 2002/12/12 19:37:46 ivarch Exp $
+  Paul L. Stoddard
+    - reported a possible bug in cursor movement handling
+

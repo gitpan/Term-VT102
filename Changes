@@ -1,5 +1,10 @@
 Changes that have been made over time:
 
+0.79 - 9 December 2003
+  + documentation additions
+  + investigated bug reported by Paul Stoddard
+  + very minor code cleanups
+
 0.78 - 13 December 2002
   + partial implementation of SM/RM
   + DECTCEM (cursor on/off)
@@ -22,5 +27,3 @@ Changes that have been made over time:
   + fixed silly TAB handling problem - no longer write spaces when TABbing
 
 0.73 - 2 November 2001
-
-$Id: Changes,v 1.9 2002/12/13 21:19:14 ivarch Exp $

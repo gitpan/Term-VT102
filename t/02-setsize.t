@@ -2,10 +2,9 @@
 #
 # Make sure the VT102 module can set its size OK.
 #
-# Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see COPYING.
 #
-# $Id: 02-setsize.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
 
 require Term::VT102;
 
@@ -40,4 +39,4 @@ foreach $i (1 .. $nt) {
 	}
 }
 
-# EOF $Id: 02-setsize.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
+# EOF

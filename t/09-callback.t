@@ -2,10 +2,9 @@
 #
 # Make sure the VT102 module's callbacks work.
 #
-# Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see COPYING.
 #
-# $Id: 09-callback.t,v 1.3 2002/08/04 20:18:23 ivarch Exp $
 
 require Term::VT102;
 
@@ -36,4 +35,4 @@ sub testcallback {
 	$testvar = $privdata;
 }
 
-# EOF $Id: 09-callback.t,v 1.3 2002/08/04 20:18:23 ivarch Exp $
+# EOF

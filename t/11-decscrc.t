@@ -2,10 +2,9 @@
 #
 # Test DECSC and DECRC.
 #
-# Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see COPYING.
 #
-# $Id: 11-decscrc.t,v 1.1 2002/11/27 22:36:41 ivarch Exp $
 
 require Term::VT102;
 require 't/testbase';
@@ -31,4 +30,4 @@ run_tests ([(
   ],
 )]);
 
-# EOF $Id: 11-decscrc.t,v 1.1 2002/11/27 22:36:41 ivarch Exp $
+# EOF

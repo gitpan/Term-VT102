@@ -2,10 +2,9 @@
 #
 # Make sure the VT102 module can handle scrolling up and down.
 #
-# Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see COPYING.
 #
-# $Id: 05-scrolling.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
 
 require Term::VT102;
 require 't/testbase';
@@ -130,4 +129,4 @@ run_tests ([(
   ],
 )]);
 
-# EOF $Id: 05-scrolling.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
+# EOF

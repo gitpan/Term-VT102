@@ -1,9 +1,8 @@
 # Term::VT102 - module for VT102 emulation in Perl
 #
-# Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see COPYING.
 #
-# $Id: VT102.pm,v 1.8 2002/12/13 23:12:49 ivarch Exp $
 
 package Term::VT102;
 
@@ -13,7 +12,7 @@ BEGIN {
 	use Exporter ();
 	use vars qw($VERSION @ISA);
 
-	$VERSION = '0.78';
+	$VERSION = '0.79';
 
 	@ISA = qw(Exporter);
 }
@@ -1894,19 +1893,31 @@ please see the B<examples/> directory in the distribution.
 
 =head1 AUTHORS
 
-Copyright (C) 2002 Andrew Wood C<E<lt>andrew.wood@ivarch.comE<gt>>.
+Copyright (C) 2003 Andrew Wood C<E<lt>andrew dot wood at ivarch dot comE<gt>>.
 Distributed under the terms of the Artistic License.
 
 Credit is also due to:
 
-  Charles Harker <CHarker@interland.com>
+  Charles Harker <CHarker at interland.com>
     - reported and helped to diagnose a bug in the handling of TABs
 
-  Steve van der Burg <steve.vanderburg@lhsc.on.ca>
+  Steve van der Burg <steve.vanderburg at lhsc.on.ca>
     - supplied basis for an example script using Net::Telnet
 
-  Chris R. Donnelly <cdonnelly@digitalmotorworks.com>
+  Chris R. Donnelly <cdonnelly at digitalmotorworks.com>
     - added support for DECTCEM, partial support for SM/RM
+
+  Paul L. Stoddard
+    - reported a possible bug in cursor movement handling
+
+=head1 THINGS TO WATCH OUT FOR
+
+Make sure that your code understands NULL (\000) - you will get this in
+strings where nothing has been printed on the screen.  For instance, the
+sequence "12\e[C34" ("12", "CUF (move right)", "34") you might think would
+yield the string "12 34", but in fact it can also yield "12\00034" - that
+is, "12" followed by a zero byte followed by "34".  This is because the
+screen's contents defaults to zeroes, not spaces.
 
 =head1 SEE ALSO
 
@@ -1914,4 +1925,4 @@ B<console_codes>(4)
 
 =cut
 
-# EOF $Id: VT102.pm,v 1.8 2002/12/13 23:12:49 ivarch Exp $
+# EOF

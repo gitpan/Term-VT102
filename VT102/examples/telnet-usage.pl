@@ -3,7 +3,6 @@
 # Example script showing how to use Term::VT102 with Net::Telnet. Telnets to
 # localhost and dumps what Term::VT102 thinks should be on the screen.
 #
-# $Id: telnet-usage.pl,v 1.1 2002/08/03 01:07:29 ivarch Exp $
 
 use Net::Telnet qw(TELOPT_TTYPE);
 use Term::VT102;
@@ -146,4 +145,4 @@ sub vt_output {
 	}
 }
 
-# EOF $Id: telnet-usage.pl,v 1.1 2002/08/03 01:07:29 ivarch Exp $
+# EOF

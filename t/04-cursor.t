@@ -2,10 +2,9 @@
 #
 # Make sure the VT102 module can handle cursor positioning.
 #
-# Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
+# Copyright (C) Andrew Wood
 # NO WARRANTY - see COPYING.
 #
-# $Id: 04-cursor.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
 
 require Term::VT102;
 require 't/testbase';
@@ -64,6 +63,10 @@ run_tests ([(
     ("\0" x 10),
     "L" . ("\0" x 8) . "R",
   ],
+  [ 20, 8, "Trap\e[CLog\e[CDisplay",  # reported by Paul Stoddard
+    "Trap\0Log\0Display" . ("\0" x 4),
+    ("\0" x 20),
+  ],
 )]);
 
-# EOF $Id: 04-cursor.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
+# EOF
