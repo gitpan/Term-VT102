@@ -3,7 +3,7 @@
 # Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
 # NO WARRANTY - see COPYING.
 #
-# $Id: VT102.pm,v 1.2 2002/04/16 23:43:59 ivarch Exp $
+# $Id: VT102.pm,v 1.5 2002/08/04 20:18:23 ivarch Exp $
 
 package Term::VT102;
 
@@ -13,7 +13,7 @@ BEGIN {
 	use Exporter ();
 	use vars qw($VERSION @ISA);
 
-	$VERSION = '0.74';
+	$VERSION = '0.75';
 
 	@ISA = qw(Exporter);
 }
@@ -149,7 +149,7 @@ sub new {
 	       'DA' => \&_code_DA,    # return ESC [ ? 6 c (VT102)
 	      'DCH' => \&_code_DCH,   # delete characters on current line
 	      'DCS' => undef,         # device control string (ended by ST)
-	   'DECALN' => undef,         # DEC alignment test - fill screen with E's
+	   'DECALN' => \&_code_DECALN,# DEC alignment test - fill screen with E's
 	    'DECID' => \&_code_DA,    # DEC private ID; return ESC [ ? 6 c (VT102)
 	    'DECLL' => undef,         # set keyboard LEDs
 	   'DECPAM' => undef,         # set application keypad mode
@@ -509,10 +509,23 @@ sub option_set {
 #
 sub row_attr {
 	my $self = shift;
-	my ($row) = @_;
+	my ($row, $startcol, $endcol) = @_;
+	my ($data);
+
 	return undef if ($row < 1);
 	return undef if ($row > $self->{'rows'});
-	return $self->{'scra'}->[$row];
+
+	$data = $self->{'scra'}->[$row];
+
+	if (defined $startcol && defined $endcol) {
+		$data = substr (
+		  $data,
+		  ($startcol - 1) * 2,
+		  (($endcol - $startcol) + 1) * 2
+		);
+	}
+
+	return $data;
 }
 
 
@@ -520,10 +533,23 @@ sub row_attr {
 #
 sub row_text {
 	my $self = shift;
-	my ($row) = @_;
+	my ($row, $startcol, $endcol) = @_;
+	my $text;
+
 	return undef if ($row < 1);
 	return undef if ($row > $self->{'rows'});
-	return $self->{'scrt'}->[$row];
+
+	$text = $self->{'scrt'}->[$row];
+
+	if (defined $startcol && defined $endcol) {
+		$text = substr (
+		  $text,
+		  $startcol - 1,
+		  ($endcol - $startcol) + 1
+		);
+	}
+
+	return $text;
 }
 
 
@@ -532,7 +558,7 @@ sub row_text {
 #
 sub row_plaintext {
 	my $self = shift;
-	my ($row) = @_;
+	my ($row, $startcol, $endcol) = @_;
 	my $text;
 
 	return undef if ($row < 1);
@@ -540,6 +566,15 @@ sub row_plaintext {
 
 	$text = $self->{'scrt'}->[$row];
 	$text =~ s/\0/ /g;
+
+	if (defined $startcol && defined $endcol) {
+		$text = substr (
+		  $text,
+		  $startcol - 1,
+		  ($endcol - $startcol) + 1
+		);
+	}
+
 	return $text;
 }
 
@@ -747,7 +782,7 @@ sub _process_escseq {
 sub _scroll_up {
 	my $self = shift;
 	my $lines = shift;
-	my ($a, $b, $i);
+	my ($attr, $a, $b, $i);
 
 	return if ($lines < 1);
 
@@ -759,9 +794,8 @@ sub _scroll_up {
 	}
 
 	$a = "\000" x $self->{'cols'};           # set text to NUL
-	$b = $self->{'attr'} x $self->{'cols'};  # set attributes to default
-
-# CHECKME: should newly scrolled lines be white-on-black or current attribs?
+	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$b = $attr x $self->{'cols'};            # set attributes to default
 
 	for (
 	  $i = $self->{'srt'};
@@ -780,7 +814,7 @@ sub _scroll_up {
 sub _scroll_down {
 	my $self = shift;
 	my $lines = shift;
-	my ($a, $b, $i);
+	my ($a, $b, $i, $attr);
 
 	$self->callback_call ('SCROLL_DOWN', $self->{'srt'}, $lines);
 
@@ -790,9 +824,8 @@ sub _scroll_down {
 	}
 
 	$a = "\000" x $self->{'cols'};           # set text to NUL
-	$b = $self->{'attr'} x $self->{'cols'};  # set attributes to default
-
-# CHECKME: should newly scrolled line be white-on-black or current attributes?
+	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$b = $attr x $self->{'cols'};            # set attributes to default
 
 	for (
 	  $i = $self->{'srb'};
@@ -973,8 +1006,6 @@ sub _code_DL {                          # delete lines
 	$lines = 1 if (not defined $lines);
 	$lines = 1 if ($lines < 1);
 
-# CHECKME: should newly inserted lines be the current colour?
-
 	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
 
 	$scrb = $self->{'srb'};
@@ -1031,8 +1062,6 @@ sub _code_ECH {                         # erase characters on current line
 
 	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
 
-# CHECKME: should erased characters be the current colour?
-
 	$line = $self->{'scra'}->[$self->{'y'}];
 	($lsub, $rsub) = ("", "");
 	$lsub = substr ($line, 0, 2 * ($self->{'x'} - 1)) if ($self->{'x'}>1);
@@ -1048,8 +1077,6 @@ sub _code_ED {                          # erase display
 	my ($row, $attr);
 
 	$num = 0 if (not defined $num);
-
-# CHECKME: should erased characters be the current colour?
 
 	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
 
@@ -1112,8 +1139,6 @@ sub _code_EL {                          # erase line
 	my $attr;
 
 	$num = 0 if (not defined $num);
-
-# CHECKME: should erased characters be the current colour?
 
 	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
 
@@ -1210,8 +1235,6 @@ sub _code_IL {                          # insert blank lines
 	$lines = 1 if (not defined $lines);
 	$lines = 1 if ($lines < 1);
 
-# CHECKME: should newly inserted lines be the current colour?
-
 	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
 
 	$scrb = $self->{'srb'};
@@ -1304,6 +1327,22 @@ sub _code_VPA {                         # move to row (current column)
 	$self->{'y'} = $row;
 	$self->{'y'} = 1 if ($self->{'y'} < 1);
 	$self->{'y'} = $self->{'rows'} if ($self->{'y'} > $self->{'rows'});
+}
+
+sub _code_DECALN {                      # fill screen with E's
+	my $self = shift;
+	my ($row, $attr);
+
+	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+
+	for ($row = 1; $row <= $self->{'rows'}; $row ++) {
+		$self->{'scrt'}->[$row] = 'E' x $self->{'cols'};
+		$self->{'scra'}->[$row] = $attr x $self->{'cols'};
+		$self->callback_call ('ROWCHANGE', $self->{'y'}, 0);
+	}
+
+	$self->{'x'} = 1;
+	$self->{'y'} = 1;
 }
 
 1;
@@ -1411,7 +1450,7 @@ eg B<$vt->>B<resize (80, 24)>.  The virtual screen is cleared first.
 
 Resets the object to its "power-on" state.
 
-=item B<row_attr> (I<$row>)
+=item B<row_attr> (I<$row>, [I<$startcol>, I<$endcol>])
 
 Returns the attributes for row I<$row> (or I<undef> if out of range) as
 a string of packed attributes, each character cell's attributes being 2
@@ -1420,15 +1459,22 @@ eg B<$attr=substr($row,4,2)> would set I<$attr> to the attributes for cell
 3 (steps of 2: 0 .. 2 .. 4, so 4 means the 3rd character).  You would then
 use the B<attr_unpack()> method to unpack that character cell's attributes.
 
-=item B<row_plaintext> (I<$row>)
+If I<$startcol> and I<$endcol> are defined, only returns the part of the row
+between columns I<$startcol> and I<$endcol> inclusive instead of the whole row.
 
-As B<row_text()>, but unused characters are represented as spaces instead of
-as \0.
-
-=item B<row_text> (I<$row>)
+=item B<row_plaintext> (I<$row>, [I<$startcol>, I<$endcol>])
 
 Returns the textual contents of row I<$row> (or I<undef> if out of range),
-with totally unused characters being represented as NULL (\0).
+with unused characters being represented as spaces.  If I<$startcol> and
+I<$endcol> are defined, only returns the part of the row between columns
+I<$startcol> and I<$endcol> inclusive instead of the whole row.
+
+=item B<row_text> (I<$row>, [I<$startcol>, I<$endcol>])
+
+Returns the textual contents of row I<$row> (or I<undef> if out of range), with
+totally unused characters being represented as NULL (\0).  If I<$startcol> and
+I<$endcol> are defined, only returns the part of the row between columns
+I<$startcol> and I<$endcol> inclusive instead of the whole row.
 
 =item B<cols> ()
 
@@ -1538,6 +1584,8 @@ The following sequences are supported:
    177 (DEL)   ignored
    233 (CSI)   same as ESC [
 
+   ESC # 8 (DECALN)  DEC screen alignment test - fill screen with E's
+
    CSI @ (ICH)     insert blank characters
    CSI A (CUU)     move cursor up
    CSI B (CUD)     move cursor down
@@ -1565,68 +1613,49 @@ The following sequences are supported:
 
 =head1 LIMITATIONS
 
-Unknown escape sequences and control characters are ignored.
+Unknown escape sequences and control characters are ignored.  All escape
+sequences pertaining to character sets are ignored.
 
-The following known control characters are ignored:
+The following known control characters / sequences are ignored:
 
-   005 (ENQ)   trigger answerback message
-   016 (SO)    activate G1 charset, carriage return
-   017 (SI)    activate G0 charset
-   021 (XON)   resume transmission
-   023 (XOFF)  stop transmission
-
-The following known escape sequences are ignored:
+   005 (ENQ)         trigger answerback message
+   021 (XON)         resume transmission
+   023 (XOFF)        stop transmission
 
    ESC 7  (DECSC)    save state
    ESC 8  (DECRC)    restore most recently saved state
-   ESC %@ (CSDFL)    select default charset (ISO646/8859-1)
-   ESC %G (CSUTF8)   select UTF-8
-   ESC %8 (CSUTF8)   select UTF-8 (obsolete)
-   ESC #8 (DECALN)   DEC alignment test - fill screen with E's
-   ESC (8 (G0DFL)    G0 charset = default mapping (ISO8859-1)
-   ESC (0 (G0GFX)    G0 charset = VT100 graphics mapping
-   ESC (U (G0ROM)    G0 charset = null mapping (straight to ROM)
-   ESC (K (G0USR)    G0 charset = user defined mapping
-   ESC )8 (G1DFL)    G1 charset = default mapping (ISO8859-1)
-   ESC )0 (G1GFX)    G1 charset = VT100 graphics mapping
-   ESC )U (G1ROM)    G1 charset = null mapping (straight to ROM)
-   ESC )K (G1USR)    G1 charset = user defined mapping
-   ESC *8 (G2DFL)    G2 charset = default mapping (ISO8859-1)
-   ESC *0 (G2GFX)    G2 charset = VT100 graphics mapping
-   ESC *U (G2ROM)    G2 charset = null mapping (straight to ROM)
-   ESC *K (G2USR)    G2 charset = user defined mapping
-   ESC +8 (G3DFL)    G3 charset = default mapping (ISO8859-1)
-   ESC +0 (G3GFX)    G3 charset = VT100 graphics mapping
-   ESC +U (G3ROM)    G3 charset = null mapping (straight to ROM)
-   ESC +K (G3USR)    G3 charset = user defined mapping
    ESC >  (DECPNM)   set numeric keypad mode
    ESC =  (DECPAM)   set application keypad mode
    ESC H  (HTS)      set tab stop at current column
-   ESC N  (SS2)      select G2 charset for next char only
-   ESC O  (SS3)      select G3 charset for next char only
    ESC P  (DCS)      device control string (ended by ST)
    ESC X  (SOS)      start of string
    ESC ^  (PM)       privacy message (ended by ST)
    ESC \  (ST)       string terminator
-   ESC n  (LS2)      invoke G2 charset
-   ESC o  (LS3)      invoke G3 charset
-   ESC |  (LS3R)     invoke G3 charset as GR
-   ESC }  (LS2R)     invoke G2 charset as GR
-   ESC ~  (LS1R)     invoke G1 charset as GR
 
-The following known CSI (ESC [) sequences are ignored:
+   CSI g (TBC)       clear tab stop (CSI 3 g = clear all stops)
+   CSI h (SM)        set mode
+   CSI l (RM)        reset mode
+   CSI q (DECLL)     set keyboard LEDs
+   CSI s (CUPSV)     save cursor position
+   CSI u (CUPRS)     restore cursor position
 
-   CSI g (TBC)     clear tab stop (CSI 3 g = clear all stops)
-   CSI h (SM)      set mode
-   CSI l (RM)      reset mode
-   CSI q (DECLL)   set keyboard LEDs
-   CSI s (CUPSV)   save cursor position
-   CSI u (CUPRS)   restore cursor position
+=head1 EXAMPLES
 
-=head1 AUTHOR
+For some examples, including how to interface Term::VT102 with Net::Telnet,
+please see the B<examples/> directory in the distribution.
+
+=head1 AUTHORS
 
 Copyright (C) 2002 Andrew Wood C<E<lt>andrew.wood@ivarch.comE<gt>>.
 Distributed under the terms of the Artistic License.
+
+Credit is also due to:
+
+  Charles Harker <CHarker@interland.com>
+    - reported and helped to diagnose a bug in the handling of TABs
+
+  Steve van der Burg <steve.vanderburg@lhsc.on.ca>
+    - supplied basis for an example script using Net::Telnet
 
 =head1 SEE ALSO
 
@@ -1634,4 +1663,4 @@ B<console_codes>(4)
 
 =cut
 
-# EOF $Id: VT102.pm,v 1.2 2002/04/16 23:43:59 ivarch Exp $
+# EOF $Id: VT102.pm,v 1.5 2002/08/04 20:18:23 ivarch Exp $

@@ -6,6 +6,7 @@ Makefile.PL
 README
 TODO
 VT102.pm
+VT102/examples/telnet-usage.pl
 t/01-load.t
 t/02-setsize.t
 t/03-text.t
@@ -15,4 +16,5 @@ t/06-insdel.t
 t/07-colour.t
 t/08-options.t
 t/09-callback.t
+t/10-decaln.t
 t/testbase

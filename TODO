@@ -1,14 +1,10 @@
 Things still to do:
 
-  - functions for Expect-like behaviour?
-  - examples / methods to open Telnet connections etc
-  - find answers to questions marked CHECKME in the module
-  - method to return arbitrary part of any row
+  - functions for Expect-like behaviour
   - method to return row text with ANSI escape sequences
   - implement tab stops
   - implement XON/XOFF
-  - implement DECALN
   - implement state save/restore (DECSC/DECRC)
   - implement cursor save/restore (CUPSV/CUPRS)
 
-$Id: TODO,v 1.2 2002/04/29 20:54:08 ivarch Exp $
+$Id: TODO,v 1.5 2002/08/04 20:18:23 ivarch Exp $

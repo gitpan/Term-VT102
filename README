@@ -3,20 +3,23 @@ emulation of a VT102 terminal.
 
 Like the "expect" Tcl extension, this module is intended primarily for use
 as a way of automating processes; for instance, you can write a script which
-connects via telnet to a full-screen service of some kind (such as
-Monochrome BBS, http://www.mono.org/), uses this module to parse the output,
-and therefore can tell what is currently "on the screen" and react
-accordingly.  Expect cannot really do this, as it is stream-oriented, rather
-than being able to tell you, say, what's on the top row of the screen.
+connects via telnet to a full-screen service of some kind (such as a router,
+or a telephone switch), uses this module to parse the output, and therefore
+can tell what is currently "on the screen" and react accordingly.  "Expect"
+cannot really do this, as it is stream-oriented, rather than being able to
+tell you, say, what's on the top row of the screen.
 
 For installation instructions, see the INSTALL file.
 
-Please send bug reports, comments, and so on to the project maintainer, Andrew
-Wood <andrew.wood@ivarch.com>.
+Please send bug reports, comments, and whatnot to the project maintainer,
+Andrew Wood <andrew.wood@ivarch.com>.
 
 Credit is also due to:
 
   Charles Harker <CHarker@interland.com>
     - reported and helped to diagnose a bug in the handling of TABs
 
-$Id: README,v 1.2 2002/04/29 20:54:08 ivarch Exp $
+  Steve van der Burg <steve.vanderburg@lhsc.on.ca>
+    - supplied basis for an example script using Net::Telnet
+
+$Id: README,v 1.3 2002/08/03 00:54:34 ivarch Exp $

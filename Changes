@@ -1,5 +1,11 @@
 Changes that have been made over time:
 
+0.75 - 4 August 2002
+  + corrected attribute behaviour when lines inserted/deleted/scrolled
+  + example script showing how to use Term::VT102 with Net::Telnet
+  + added optional column params to row_attr(), row_text(), row_plaintext()
+  + implemented DECALN
+
 0.74 - 29 April 2002
   + imported into CVS
   + directory structure flattened (no more pointless lib/Term directory)
@@ -9,4 +15,4 @@ Changes that have been made over time:
 
 0.73 - 2 November 2001
 
-$Id: Changes,v 1.3 2002/04/29 20:54:08 ivarch Exp $
+$Id: Changes,v 1.6 2002/08/04 20:18:23 ivarch Exp $
