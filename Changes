@@ -1,5 +1,9 @@
 Changes that have been made over time:
 
+0.78 - 13 December 2002
+  + partial implementation of SM/RM
+  + DECTCEM (cursor on/off)
+
 0.77 - 27 November 2002
   + implemented DECSC/DECRC (state save/restore)
   + implemented CUPSV/CUPRS (cursor position save/restore)
@@ -19,4 +23,4 @@ Changes that have been made over time:
 
 0.73 - 2 November 2001
 
-$Id: Changes,v 1.7 2002/11/27 22:36:39 ivarch Exp $
+$Id: Changes,v 1.9 2002/12/13 21:19:14 ivarch Exp $

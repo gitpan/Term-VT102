@@ -22,4 +22,7 @@ Credit is also due to:
   Steve van der Burg <steve.vanderburg@lhsc.on.ca>
     - supplied basis for an example script using Net::Telnet
 
-$Id: README,v 1.3 2002/08/03 00:54:34 ivarch Exp $
+  Chris R. Donnelly <cdonnelly@digitalmotorworks.com>
+    - added support for DECTCEM, partial support for SM/RM
+
+$Id: README,v 1.4 2002/12/12 19:37:46 ivarch Exp $

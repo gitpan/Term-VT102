@@ -3,7 +3,7 @@
 # Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
 # NO WARRANTY - see COPYING.
 #
-# $Id: VT102.pm,v 1.6 2002/11/27 22:36:39 ivarch Exp $
+# $Id: VT102.pm,v 1.8 2002/12/13 23:12:49 ivarch Exp $
 
 package Term::VT102;
 
@@ -13,10 +13,60 @@ BEGIN {
 	use Exporter ();
 	use vars qw($VERSION @ISA);
 
-	$VERSION = '0.77';
+	$VERSION = '0.78';
 
 	@ISA = qw(Exporter);
 }
+
+
+# Return the packed version of a set of attributes fg, bg, bo, fa, st, ul,
+# bl, rv.
+#
+sub attr_pack {
+	shift if ref($_[0]); # called in object context, ditch the object
+	my ($fg, $bg, $bo, $fa, $st, $ul, $bl, $rv) = @_;
+	my $num = 0;
+
+	$num = ($fg & 7)
+	  | (($bg & 7) << 4)
+	  | ($bo << 8)
+	  | ($fa << 9)
+	  | ($st << 10)
+	  | ($ul << 11)
+	  | ($bl << 12)
+	  | ($rv << 13);
+	return pack ('S', $num);
+}
+
+
+# Return the unpacked version of a packed attribute.
+#
+sub attr_unpack {
+	shift if ref($_[0]); # called in object context, ditch the object
+	my $data = shift;
+	my ($num, $fg, $bg, $bo, $fa, $st, $ul, $bl, $rv);
+
+	$num = unpack ('S', $data);
+
+	($fg, $bg, $bo, $fa, $st, $ul, $bl, $rv) = (
+	  $num & 7,
+	  ($num >> 4) & 7,
+	  ($num >> 8) & 1,
+	  ($num >> 9) & 1,
+	  ($num >> 10) & 1,
+	  ($num >> 11) & 1,
+	  ($num >> 12) & 1,
+	  ($num >> 13) & 1
+	);
+
+	return ($fg, $bg, $bo, $fa, $st, $ul, $bl, $rv);
+}
+
+
+# Default attribute set (in both packed and unpacked flavors)
+#
+use constant DEFAULT_ATTR => (7, 0, 0, 0, 0, 0, 0, 0);
+use constant DEFAULT_ATTR_PACKED => attr_pack(&DEFAULT_ATTR);
 
 
 # Constructor function.
@@ -66,10 +116,12 @@ sub new {
 	  '(0' => 'G0GFX',            # G0 charset = VT100 graphics mapping
 	  '(U' => 'G0ROM',            # G0 charset = null mapping (straight to ROM)
 	  '(K' => 'G0USR',            # G0 charset = user defined mapping
+	  '(B' => 'G0TXT',            # G0 charset = ASCII mapping
 	  ')8' => 'G1DFL',            # G1 charset = default mapping (ISO8859-1)
 	  ')0' => 'G1GFX',            # G1 charset = VT100 graphics mapping
 	  ')U' => 'G1ROM',            # G1 charset = null mapping (straight to ROM)
 	  ')K' => 'G1USR',            # G1 charset = user defined mapping
+	  ')B' => 'G1TXT',            # G1 charset = ASCII mapping
 	  '*8' => 'G2DFL',            # G2 charset = default mapping (ISO8859-1)
 	  '*0' => 'G2GFX',            # G2 charset = VT100 graphics mapping
 	  '*U' => 'G2ROM',            # G2 charset = null mapping (straight to ROM)
@@ -128,51 +180,141 @@ sub new {
 	  '`' => 'HPA'                # move cursor to column in current row
 	) };
 
+	$self->{'_modeseq'} = { ( # ANSI/DEC specified modes for SM/RM
+	                           # ANSI Specified Modes
+	    '0'   => 'IGN',           # Error (Ignored)
+	    '1'   => 'GATM',          # guarded-area transfer mode (ignored)
+	    '2'   => 'KAM',           # keyboard action mode (always reset)
+	    '3'   => 'CRM',           # control representation mode (always reset)
+	    '4'   => 'IRM',           # insertion/replacement mode (always reset)
+	    '5'   => 'SRTM',          # status-reporting transfer mode
+	    '6'   => 'ERM',           # erasure mode (always set)
+	    '7'   => 'VEM',           # vertical editing mode (ignored)
+	   '10'   => 'HEM',           # horizontal editing mode
+	   '11'   => 'PUM',           # positioning unit mode
+	   '12'   => 'SRM',           # send/receive mode (echo on/off)
+	   '13'   => 'FEAM',          # format effector action mode
+	   '14'   => 'FETM',          # format effector transfer mode
+	   '15'   => 'MATM',          # multiple area transfer mode
+	   '16'   => 'TTM',           # transfer termination mode
+	   '17'   => 'SATM',          # selected area transfer mode
+	   '18'   => 'TSM',           # tabulation stop mode
+	   '19'   => 'EBM',           # editing boundary mode
+	   '20'   => 'LNM',           # Line Feed / New Line Mode
+	                           # DEC Private Modes
+	   '?0'   => 'IGN',           # Error (Ignored)
+	   '?1'   => 'DECCKM',        # Cursorkeys application (set); Cursorkeys normal (reset)
+	   '?2'   => 'DECANM',        # ANSI (set); VT52 (reset)
+	   '?3'   => 'DECCOLM',       # 132 columns (set); 80 columns (reset)
+	   '?4'   => 'DECSCLM',       # Jump scroll (set); Smooth scroll (reset)
+	   '?5'   => 'DECSCNM',       # Reverse screen (set); Normal screen (reset)
+	   '?6'   => 'DECOM',         # Sets relative coordinates (set); Sets absolute coordinates (reset)
+	   '?7'   => 'DECAWM',        # Auto Wrap
+	   '?8'   => 'DECARM',        # Auto Repeat
+	   '?9'   => 'DECINLM',       # Interlace
+	  '?18'   => 'DECPFF',        # Send FF to printer after print screen (set); No char after PS (reset)
+	  '?19'   => 'DECPEX',        # Print screen: prints full screen (set); prints scroll region (reset)
+	  '?25'   => 'DECTCEM',       # Cursor on (set); Cursor off (reset)
+	) };
+
 	$self->{'_funcs'} = { (     # supported character sequences
-	      'BEL' => \&_code_BEL,   # beep
 	       'BS' => \&_code_BS,    # backspace one column
+	       'CR' => \&_code_CR,    # carriage return
+	       'DA' => \&_code_DA,    # return ESC [ ? 6 c (VT102)
+	       'DL' => \&_code_DL,    # delete lines
+	       'ED' => \&_code_ED,    # erase display
+	       'EL' => \&_code_EL,    # erase line
+	       'FF' => \&_code_LF,    # line feed
+	       'HT' => \&_code_HT,    # horizontal tab to next tab stop
+	       'IL' => \&_code_IL,    # insert blank lines
+	       'LF' => \&_code_LF,    # line feed
+	       'PM' => undef,         # privacy message (ended by ST)
+	       'RI' => \&_code_CUU,   # reverse line feed
+	       'RM' => \&_code_RM,    # reset mode
+	       'SI' => undef,         # activate G0 character set
+	       'SM' => \&_code_SM,    # set mode
+	       'SO' => undef,         # activate G1 character set & CR
+	       'ST' => undef,         # string terminator
+	       'VT' => \&_code_LF,    # line feed
+	      'BEL' => \&_code_BEL,   # beep
 	      'CAN' => \&_code_CAN,   # interrupt escape sequence
 	      'CHA' => \&_code_CHA,   # move cursor to column in current row
 	      'CNL' => \&_code_CNL,   # move cursor down and to column 1
 	      'CPL' => \&_code_CPL,   # move cursor up and to column 1
-	       'CR' => \&_code_CR,    # carriage return
-	    'CSDFL' => undef,         # select default charset (ISO646/8859-1)
+	      'CRM' => undef,         # control representation mode
 	      'CSI' => \&_code_CSI,   # equivalent to ESC [
-	   'CSUTF8' => undef,         # select UTF-8 (obsolete)
 	      'CUB' => \&_code_CUB,   # move cursor left
 	      'CUD' => \&_code_CUD,   # move cursor down
 	      'CUF' => \&_code_CUF,   # move cursor right
-	    'CUPRS' => \&_code_CUPRS, # restore cursor position
-	    'CUPSV' => \&_code_CUPSV, # save cursor position
 	      'CUP' => \&_code_CUP,   # move cursor to row, column
 	      'CUU' => \&_code_CUU,   # move cursor up
-	       'DA' => \&_code_DA,    # return ESC [ ? 6 c (VT102)
 	      'DCH' => \&_code_DCH,   # delete characters on current line
 	      'DCS' => undef,         # device control string (ended by ST)
-	   'DECALN' => \&_code_DECALN,# DEC alignment test - fill screen with E's
+	      'DEL' => \&_code_IGN,   # ignored
+	      'DSR' => \&_code_DSR,   # device status report
+	      'EBM' => undef,         # editing boundary mode
+	      'ECH' => \&_code_ECH,   # erase characters on current line
+	      'ENQ' => undef,         # trigger answerback message
+	      'ERM' => undef,         # erasure mode
+	      'ESC' => \&_code_ESC,   # start escape sequence
+	      'HEM' => undef,         # horizontal editing mode
+	      'HPA' => \&_code_CHA,   # move cursor to column in current row
+	      'HPR' => \&_code_CUF,   # move cursor right
+	      'HTS' => undef,         # set tab stop at current column
+	      'HVP' => \&_code_CUP,   # move cursor to row, column
+	      'ICH' => \&_code_ICH,   # insert blank characters
+	      'IGN' => \&_code_IGN,   # ignored control sequence
+	      'IND' => \&_code_LF,    # line feed
+	      'IRM' => undef,         # insert/replace mode
+	      'KAM' => undef,         # keyboard action mode
+	      'LNM' => undef,         # line feed / newline mode
+	      'LS2' => undef,         # invoke G2 charset
+	      'LS3' => undef,         # invoke G3 charset
+	      'NEL' => \&_code_CUD,   # newline
+	      'NUL' => \&_code_IGN,   # ignored
+	      'OSC' => \&_code_OSC,   # operating system command
+	      'PUM' => undef,         # positioning unit mode
+	      'RIS' => \&_code_RIS,   # reset
+	      'SGR' => \&_code_SGR,   # set graphic rendition
+	      'SOS' => undef,         # start of string
+	      'SRM' => undef,         # send/receive mode (echo on/off)
+	      'SS2' => undef,         # select G2 charset for next char only
+	      'SS3' => undef,         # select G3 charset for next char only
+	      'SUB' => \&_code_CAN,   # interrupt escape sequence
+	      'TBC' => undef,         # clear tab stop (CSI 3 g = clear all stops)
+	      'TSM' => undef,         # tabulation stop mode
+	      'TTM' => undef,         # transfer termination mode
+	      'VEM' => undef,         # vertical editing mode
+	      'VPA' => \&_code_VPA,   # move to row (current column)
+	      'VPR' => \&_code_CUD,   # move cursor down
+	      'XON' => undef,         # resume transmission
+	     'FEAM' => undef,         # format effector action mode
+	     'FETM' => undef,         # format effector transfer mode
+	     'GATM' => undef,         # guarded-area transfer mode
+	     'LS1R' => undef,         # invoke G1 charset as GR
+	     'LS2R' => undef,         # invoke G2 charset as GR
+	     'LS3R' => undef,         # invoke G3 charset as GR
+	     'MATM' => undef,         # multiple area transfer mode
+	     'SATM' => undef,         # selected area transfer mode
+	     'SRTM' => undef,         # status-reporting transfer mode
+	     'XOFF' => undef,         # stop transmission, ignore characters
+	    'CSDFL' => undef,         # select default charset (ISO646/8859-1)
+	    'CUPRS' => \&_code_CUPRS, # restore cursor position
+	    'CUPSV' => \&_code_CUPSV, # save cursor position
 	    'DECID' => \&_code_DA,    # DEC private ID; return ESC [ ? 6 c (VT102)
 	    'DECLL' => undef,         # set keyboard LEDs
-	   'DECPAM' => undef,         # set application keypad mode
-	   'DECPNM' => undef,         # set numeric keypad mode
+	    'DECOM' => undef,         # relative/absolute coordinate mode
 	    'DECRC' => \&_code_DECRC, # restore most recently saved state
 	    'DECSC' => \&_code_DECSC, # save state (position, charset, attributes)
-	  'DECSTBM' => \&_code_DECSTBM, # set scrolling region
-	      'DEL' => \&_code_IGN,   # ignored
-	       'DL' => \&_code_DL,    # delete lines
-	      'DSR' => \&_code_DSR,   # device status report
-	      'ECH' => \&_code_ECH,   # erase characters on current line
-	       'ED' => \&_code_ED,    # erase display
-	       'EL' => \&_code_EL,    # erase line
-	      'ENQ' => undef,         # trigger answerback message
-	      'ESC' => \&_code_ESC,   # start escape sequence
-	       'FF' => \&_code_LF,    # line feed
 	    'G0DFL' => undef,         # G0 charset = default mapping (ISO8859-1)
 	    'G0GFX' => undef,         # G0 charset = VT100 graphics mapping
 	    'G0ROM' => undef,         # G0 charset = null mapping (straight to ROM)
+	    'G0TXT' => undef,         # G0 charset = ASCII mapping
 	    'G0USR' => undef,         # G0 charset = user defined mapping
 	    'G1DFL' => undef,         # G1 charset = default mapping (ISO8859-1)
 	    'G1GFX' => undef,         # G1 charset = VT100 graphics mapping
 	    'G1ROM' => undef,         # G1 charset = null mapping (straight to ROM)
+	    'G1TXT' => undef,         # G1 charset = ASCII mapping
 	    'G1USR' => undef,         # G1 charset = user defined mapping
 	    'G2DFL' => undef,         # G2 charset = default mapping (ISO8859-1)
 	    'G2GFX' => undef,         # G2 charset = VT100 graphics mapping
@@ -182,43 +324,22 @@ sub new {
 	    'G3GFX' => undef,         # G3 charset = VT100 graphics mapping
 	    'G3ROM' => undef,         # G3 charset = null mapping (straight to ROM)
 	    'G3USR' => undef,         # G3 charset = user defined mapping
-	      'HPA' => \&_code_CHA,   # move cursor to column in current row
-	      'HPR' => \&_code_CUF,   # move cursor right
-	      'HTS' => undef,         # set tab stop at current column
-	       'HT' => \&_code_HT,    # horizontal tab to next tab stop
-	      'HVP' => \&_code_CUP,   # move cursor to row, column
-	      'ICH' => \&_code_ICH,   # insert blank characters
-	      'IGN' => \&_code_IGN,   # ignored control sequence
-	       'IL' => \&_code_IL,    # insert blank lines
-	      'IND' => \&_code_LF,    # line feed
-	       'LF' => \&_code_LF,    # line feed
-	     'LS1R' => undef,         # invoke G1 charset as GR
-	     'LS2R' => undef,         # invoke G2 charset as GR
-	      'LS2' => undef,         # invoke G2 charset
-	     'LS3R' => undef,         # invoke G3 charset as GR
-	      'LS3' => undef,         # invoke G3 charset
-	      'NEL' => \&_code_CUD,   # newline
-	      'NUL' => \&_code_IGN,   # ignored
-	      'OSC' => \&_code_OSC,   # operating system command
-	       'PM' => undef,         # privacy message (ended by ST)
-	      'RIS' => \&_code_RIS,   # reset
-	       'RI' => \&_code_CUU,   # reverse line feed
-	       'RM' => undef,         # reset mode
-	      'SGR' => \&_code_SGR,   # set graphic rendition
-	       'SI' => undef,         # activate G0 character set
-	       'SM' => undef,         # set mode
-	      'SOS' => undef,         # start of string
-	       'SO' => undef,         # activate G1 character set & CR
-	      'SS2' => undef,         # select G2 charset for next char only
-	      'SS3' => undef,         # select G3 charset for next char only
-	       'ST' => undef,         # string terminator
-	      'SUB' => \&_code_CAN,   # interrupt escape sequence
-	      'TBC' => undef,         # clear tab stop (CSI 3 g = clear all stops)
-	      'VPA' => \&_code_VPA,   # move to row (current column)
-	      'VPR' => \&_code_CUD,   # move cursor down
-	       'VT' => \&_code_LF,    # line feed
-	     'XOFF' => undef,         # stop transmission, ignore characters
-	      'XON' => undef,         # resume transmission
+	   'CSUTF8' => undef,         # select UTF-8 (obsolete)
+	   'DECALN' => \&_code_DECALN,# DEC alignment test - fill screen with E's
+	   'DECANM' => undef,         # ANSI/VT52 mode
+	   'DECARM' => undef,         # auto repeat mode
+	   'DECAWM' => undef,         # auto wrap mode
+	   'DECCKM' => undef,         # cursor key mode
+	   'DECPAM' => undef,         # set application keypad mode
+	   'DECPEX' => undef,         # print screen / scrolling region
+	   'DECPFF' => undef,         # sent FF after print screen, or not
+	   'DECPNM' => undef,         # set numeric keypad mode
+	  'DECCOLM' => undef,         # 132 column mode
+	  'DECINLM' => undef,         # interlace mode
+	  'DECSCLM' => undef,         # jump/smooth scroll mode
+	  'DECSCNM' => undef,         # reverse/normal screen mode
+	  'DECSTBM' => \&_code_DECSTBM, # set scrolling region
+	  'DECTCEM' => \&_code_DECTCEM, # Cursor on (set); Cursor off (reset)
 	) };
 
 	$self->{'_callbacks'} = { (   # available callbacks
@@ -287,7 +408,7 @@ sub reset {
 	$self->{'x'} = 1;                     # default X position: 1
 	$self->{'y'} = 1;                     # default Y position: 1
 
-	$self->{'attr'} = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$self->{'attr'} = DEFAULT_ATTR_PACKED;
 
 	$self->{'ti'} = '';                   # default: blank window title
 	$self->{'ic'} = '';                   # default: blank icon title
@@ -311,6 +432,8 @@ sub reset {
 
 	$self->{'_buf'} = undef;              # blank the esc-sequence buffer
 	$self->{'_inesc'} = 0;                # not in any escape sequence
+
+	$self->{'cursor'} = 1;                # turn cursor on
 }
 
 
@@ -377,6 +500,14 @@ sub y {
 }
 
 
+# Return the current cursor state (1=on, 0=off).
+#
+sub cursor {
+	my $self = shift;
+	return $self->{'cursor'};
+}
+
+
 # Return the current xterm title text.
 #
 sub xtitle {
@@ -405,50 +536,6 @@ sub status {
 	  $self->{'ti'},              # xterm title text
 	  $self->{'ic'}               # xterm icon text
 	);
-}
-
-
-# Return the unpacked version of a packed attribute.
-#
-sub attr_unpack {
-	my $self = shift;
-	my $data = shift;
-	my ($num, $fg, $bg, $bo, $fa, $st, $ul, $bl, $rv);
-
-	$num = unpack ('S', $data);
-
-	($fg, $bg, $bo, $fa, $st, $ul, $bl, $rv) = (
-	  $num & 7,
-	  ($num >> 4) & 7,
-	  ($num >> 8) & 1,
-	  ($num >> 9) & 1,
-	  ($num >> 10) & 1,
-	  ($num >> 11) & 1,
-	  ($num >> 12) & 1,
-	  ($num >> 13) & 1
-	);
-
-	return ($fg, $bg, $bo, $fa, $st, $ul, $bl, $rv);
-}
-
-
-# Return the packed version of a set of attributes fg, bg, bo, fa, st, ul,
-# bl, rv.
-#
-sub attr_pack {
-	my $self = shift;
-	my ($fg, $bg, $bo, $fa, $st, $ul, $bl, $rv) = @_;
-	my $num = 0;
-
-	$num = ($fg & 7)
-	  | (($bg & 7) << 4)
-	  | ($bo << 8)
-	  | ($fa << 9)
-	  | ($st << 10)
-	  | ($ul << 11)
-	  | ($bl << 12)
-	  | ($rv << 13);
-	return pack ('S', $num);
 }
 
 
@@ -617,7 +704,8 @@ sub _process_text {
 			  length $segment
 			) = $segment;
 			substr (
-			  $self->{'scra'}->[$self->{'y'}], 2*($self->{'x'}-1),
+			  $self->{'scra'}->[$self->{'y'}],
+			  2 * ($self->{'x'} - 1),
 			  2 * (length $segment)
 			) = $self->{'attr'} x (length $segment);
 			$self->{'x'} += length $segment;
@@ -666,7 +754,7 @@ sub _process_escseq {
 	if ($self->{'_inesc'} == 3) {                 # in OSC sequence
 		if (
 		  $self->{'_buf'} =~ /^0;([^\007]*)\007/
-		) {                                          # icon & window
+		) {                                         # icon & window
 			$dat = $1;
 			$self->callback_call ('XWINTITLE', $dat, 0);
 			$self->callback_call ('XICONNAME', $dat, 0);
@@ -676,7 +764,7 @@ sub _process_escseq {
 			$self->{'_inesc'} = 0;
 		} elsif (
 		  $self->{'_buf'} =~ /^1;([^\007]*)\007/
-		) {                                          # set icon name
+		) {                                         # set icon name
 			$dat = $1;
 			$self->callback_call ('XICONNAME', $dat, 0);
 			$self->{'ic'} = $dat;
@@ -684,13 +772,15 @@ sub _process_escseq {
 			$self->{'_inesc'} = 0;
 		} elsif (
 		  $self->{'_buf'} =~ /^2;([^\007]*)\007/
-		) {                                          # set window title
+		) {                                         # set window title
 			$dat = $1;
 			$self->callback_call ('XWINTITLE', $dat, 0);
 			$self->{'ti'} = $dat;
 			$self->{'_buf'} = undef;
 			$self->{'_inesc'} = 0;
-		} elsif (length $self->{'_buf'} > 1024) {    # OSC too long
+		} elsif (
+		  length $self->{'_buf'} > 1024
+		) {                                         # OSC too long
 			$self->callback_call (
 			  'UNKNOWN', 'OSC', "\033]" . $self->{'_buf'}
 			);
@@ -732,7 +822,7 @@ sub _process_escseq {
 		}
 		if (
 		  length $self->{'_buf'} > 64
-		) {                            # abort CSI sequence if too long
+		) {                           # abort CSI sequence if too long
 			$self->callback_call (
 			  'UNKNOWN', 'CSI', "\033[" . $self->{'_buf'}
 			);
@@ -797,7 +887,7 @@ sub _scroll_up {
 	}
 
 	$a = "\000" x $self->{'cols'};           # set text to NUL
-	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$attr = DEFAULT_ATTR_PACKED;
 	$b = $attr x $self->{'cols'};            # set attributes to default
 
 	for (
@@ -827,7 +917,7 @@ sub _scroll_down {
 	}
 
 	$a = "\000" x $self->{'cols'};           # set text to NUL
-	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$attr = DEFAULT_ATTR_PACKED;
 	$b = $attr x $self->{'cols'};            # set attributes to default
 
 	for (
@@ -970,7 +1060,7 @@ sub _code_DCH {                         # delete characters on current line
 	$rsub = substr ($line, $self->{'x'} - 1 + $todel);
 	$self->{'scrt'}->[$self->{'y'}] = $lsub . $rsub . ("\0" x $todel);
 
-	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$attr = DEFAULT_ATTR_PACKED;
 	$line = $self->{'scra'}->[$self->{'y'}];
 	($lsub, $rsub) = ("", "");
 	$lsub = substr ($line, 0, 2 * ($self->{'x'} - 1)) if ($self->{'x'} > 1);
@@ -998,6 +1088,11 @@ sub _code_DECSTBM {                     # set scrolling region
 	$self->{'srb'} = $bottom;
 }
 
+sub _code_DECTCEM {                     # Cursor on (set); Cursor off (reset)
+	my $self = shift;
+	$self->{'cursor'} = shift;
+}
+
 sub _code_IGN {                         # ignored control sequence
 }
 
@@ -1009,7 +1104,7 @@ sub _code_DL {                          # delete lines
 	$lines = 1 if (not defined $lines);
 	$lines = 1 if ($lines < 1);
 
-	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$attr = DEFAULT_ATTR_PACKED;
 
 	$scrb = $self->{'srb'};
 	$scrb = $self->{'rows'} if ($self->{'y'} > $self->{'srb'});
@@ -1063,11 +1158,12 @@ sub _code_ECH {                         # erase characters on current line
 	$rsub = substr ($line, $self->{'x'} - 1 + $todel);
 	$self->{'scrt'}->[$self->{'y'}] = $lsub . ("\0" x $todel) . $rsub;
 
-	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$attr = DEFAULT_ATTR_PACKED;
+
 
 	$line = $self->{'scra'}->[$self->{'y'}];
 	($lsub, $rsub) = ("", "");
-	$lsub = substr ($line, 0, 2 * ($self->{'x'} - 1)) if ($self->{'x'}>1);
+	$lsub = substr ($line, 0, 2 * ($self->{'x'} - 1)) if ($self->{'x'} > 1);
 	$rsub = substr ($line, 2 * ($self->{'x'} - 1 + $todel));
 	$self->{'scra'}->[$self->{'y'}] = $lsub . ($attr x $todel) . $rsub;
 
@@ -1081,7 +1177,7 @@ sub _code_ED {                          # erase display
 
 	$num = 0 if (not defined $num);
 
-	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$attr = DEFAULT_ATTR_PACKED;
 
 	# Wipe-cursor-to-end is the same as clear-whole-screen if cursor at top left
 	#
@@ -1143,7 +1239,7 @@ sub _code_EL {                          # erase line
 
 	$num = 0 if (not defined $num);
 
-	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$attr = DEFAULT_ATTR_PACKED;
 
 	if ($num == 0) {                            # 0 = cursor to end of line
 		$self->{'scrt'}->[$self->{'y'}] =
@@ -1220,7 +1316,7 @@ sub _code_ICH {                         # insert blank characters
 	$rsub = substr ($line, $self->{'x'} - 1, $width - $toins);
 	$self->{'scrt'}->[$self->{'y'}] = $lsub . ("\0" x $toins) . $rsub;
 
-	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$attr = DEFAULT_ATTR_PACKED;
 	$line = $self->{'scra'}->[$self->{'y'}];
 	($lsub, $rsub) = ("", "");
 	$lsub = substr ($line, 0, 2 * ($self->{'x'} - 1)) if ($self->{'x'} > 1);
@@ -1238,7 +1334,7 @@ sub _code_IL {                          # insert blank lines
 	$lines = 1 if (not defined $lines);
 	$lines = 1 if ($lines < 1);
 
-	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$attr = DEFAULT_ATTR_PACKED;
 
 	$scrb = $self->{'srb'};
 	$scrb = $self->{'rows'} if ($self->{'y'} > $self->{'srb'});
@@ -1272,6 +1368,40 @@ sub _code_RIS {                         # reset
 	$self->reset ();
 }
 
+sub _toggle_mode {                      # set/reset modes
+	my $self = shift;
+	my ($flag, @modes) = @_;
+
+	foreach my $mode (@modes) {
+		my $name = $self->{'_modeseq'}->{$mode};
+		my $func = $self->{'_funcs'}->{$name};
+		if (not defined $func) {                # unsupported seq.
+			$self->callback_call (
+			  'UNKNOWN',
+			  $name,
+			  "\033[${mode}" . ($flag ? "h" : "l")
+			);
+			$self->{'_buf'} = undef;
+			$self->{'_inesc'} = 0;
+			return;
+		}
+		$self->{'_buf'} = undef;
+		$self->{'_inesc'} = 0;
+		&{$func} ($self, $flag);
+		return;
+	}
+}
+
+sub _code_RM {                          # reset mode
+	my $self = shift;
+	$self->_toggle_mode(0, @_);
+}
+
+sub _code_SM {                          # set mode
+	my $self = shift;
+	$self->_toggle_mode(1, @_);
+}
+
 sub _code_SGR {                         # set graphic rendition
 	my $self = shift;
 	my (@parms) = (@_);
@@ -1284,8 +1414,7 @@ sub _code_SGR {                         # set graphic rendition
 
 	while (defined ($val = shift @parms)) {
 		if ($val == 0) {                     # reset all attributes
-			($fg, $bg, $bo, $fa, $st, $ul, $bl, $rv) =
-			  (7, 0, 0, 0, 0, 0, 0, 0);
+			($fg, $bg, $bo, $fa, $st, $ul, $bl, $rv) = DEFAULT_ATTR;
 		} elsif ($val == 1) {                # bold ON
 			($bo, $fa) = (1, 0);
 		} elsif ($val == 2) {                # faint ON
@@ -1310,7 +1439,7 @@ sub _code_SGR {                         # set graphic rendition
 			$fg = $val - 30;
 		} elsif ($val == 38) {               # underline on, default fg
 			($ul, $fg) = (1, 7);
-		} elsif ($val == 39) {               # underline off default fg
+		} elsif ($val == 39) {               # underline off, default fg
 			($ul, $fg) = (0, 7);
 		} elsif (($val >= 40) && ($val <= 47)) {# set background colour
 			$bg = $val - 40;
@@ -1336,7 +1465,7 @@ sub _code_DECALN {                      # fill screen with E's
 	my $self = shift;
 	my ($row, $attr);
 
-	$attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
+	$attr = DEFAULT_ATTR_PACKED;
 
 	for ($row = 1; $row <= $self->{'rows'}; $row ++) {
 		$self->{'scrt'}->[$row] = 'E' x $self->{'cols'};
@@ -1360,7 +1489,8 @@ sub _code_DECSC {                       # save state
 	    $self->{'y'},
 	    $self->{'attr'},
 	    $self->{'ti'},
-	    $self->{'ic'}
+	    $self->{'ic'},
+	    $self->{'cursor'}
 	  ]
 	);
 	$self->{'_decsc'} = [ @state ];
@@ -1381,7 +1511,8 @@ sub _code_DECRC {                       # restore most recently saved state
 	  $self->{'y'},
 	  $self->{'attr'},
 	  $self->{'ti'},
-	  $self->{'ic'}
+	  $self->{'ic'},
+	  $self->{'cursor'}
 	) = @$ref;
 
 	$self->{'_decsc'} = [ @state ];
@@ -1572,6 +1703,10 @@ Return the current cursor X co-ordinate (1 being leftmost).
 
 Return the current cursor Y co-ordinate (1 being topmost).
 
+=item B<cursor> ()
+
+Return the current cursor state (1 being on, 0 being off).
+
 =item B<xtitle> ()
 
 Return the current xterm window title.
@@ -1698,22 +1833,59 @@ sequences pertaining to character sets are ignored.
 
 The following known control characters / sequences are ignored:
 
-   005 (ENQ)       trigger answerback message
-   021 (XON)       resume transmission
-   023 (XOFF)      stop transmission
+   005 (ENQ)   trigger answerback message
+   016 (SO)    activate G1 charset, carriage return
+   017 (SI)    activate G0 charset
+   021 (XON)   resume transmission
+   023 (XOFF)  stop transmission
 
-   ESC > (DECPNM)  set numeric keypad mode
-   ESC = (DECPAM)  set application keypad mode
-   ESC H (HTS)     set tab stop at current column
-   ESC P (DCS)     device control string (ended by ST)
-   ESC X (SOS)     start of string
-   ESC ^ (PM)      privacy message (ended by ST)
-   ESC \ (ST)      string terminator
+The following known escape sequences are ignored:
+
+   ESC %@ (CSDFL)    select default charset (ISO646/8859-1)
+   ESC %G (CSUTF8)   select UTF-8
+   ESC %8 (CSUTF8)   select UTF-8 (obsolete)
+   ESC (8 (G0DFL)    G0 charset = default mapping (ISO8859-1)
+   ESC (0 (G0GFX)    G0 charset = VT100 graphics mapping
+   ESC (U (G0ROM)    G0 charset = null mapping (straight to ROM)
+   ESC (K (G0USR)    G0 charset = user defined mapping
+   ESC (B (G0TXT)    G0 charset = ASCII mapping
+   ESC )8 (G1DFL)    G1 charset = default mapping (ISO8859-1)
+   ESC )0 (G1GFX)    G1 charset = VT100 graphics mapping
+   ESC )U (G1ROM)    G1 charset = null mapping (straight to ROM)
+   ESC )K (G1USR)    G1 charset = user defined mapping
+   ESC )B (G1TXT)    G1 charset = ASCII mapping
+   ESC *8 (G2DFL)    G2 charset = default mapping (ISO8859-1)
+   ESC *0 (G2GFX)    G2 charset = VT100 graphics mapping
+   ESC *U (G2ROM)    G2 charset = null mapping (straight to ROM)
+   ESC *K (G2USR)    G2 charset = user defined mapping
+   ESC +8 (G3DFL)    G3 charset = default mapping (ISO8859-1)
+   ESC +0 (G3GFX)    G3 charset = VT100 graphics mapping
+   ESC +U (G3ROM)    G3 charset = null mapping (straight to ROM)
+   ESC +K (G3USR)    G3 charset = user defined mapping
+   ESC >  (DECPNM)   set numeric keypad mode
+   ESC =  (DECPAM)   set application keypad mode
+   ESC H  (HTS)      set tab stop at current column
+   ESC N  (SS2)      select G2 charset for next char only
+   ESC O  (SS3)      select G3 charset for next char only
+   ESC P  (DCS)      device control string (ended by ST)
+   ESC X  (SOS)      start of string
+   ESC ^  (PM)       privacy message (ended by ST)
+   ESC \  (ST)       string terminator
+   ESC n  (LS2)      invoke G2 charset
+   ESC o  (LS3)      invoke G3 charset
+   ESC |  (LS3R)     invoke G3 charset as GR
+   ESC }  (LS2R)     invoke G2 charset as GR
+   ESC ~  (LS1R)     invoke G1 charset as GR
+
+The following known CSI (ESC [) sequences are ignored:
 
    CSI g (TBC)     clear tab stop (CSI 3 g = clear all stops)
-   CSI h (SM)      set mode
-   CSI l (RM)      reset mode
    CSI q (DECLL)   set keyboard LEDs
+
+The following known CSI (ESC [) sequences are only partially supported:
+
+   CSI h (SM)      set mode (only support CSI ? 25 h, cursor on/off)
+   CSI l (RM)      reset mode (as above)
 
 =head1 EXAMPLES
 
@@ -1733,10 +1905,13 @@ Credit is also due to:
   Steve van der Burg <steve.vanderburg@lhsc.on.ca>
     - supplied basis for an example script using Net::Telnet
 
+  Chris R. Donnelly <cdonnelly@digitalmotorworks.com>
+    - added support for DECTCEM, partial support for SM/RM
+
 =head1 SEE ALSO
 
 B<console_codes>(4)
 
 =cut
 
-# EOF $Id: VT102.pm,v 1.6 2002/11/27 22:36:39 ivarch Exp $
+# EOF $Id: VT102.pm,v 1.8 2002/12/13 23:12:49 ivarch Exp $
