@@ -5,10 +5,10 @@
 # Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
 # NO WARRANTY - see COPYING.
 #
-# $Id: 01-load.t,v 1.2 2001/05/20 16:58:20 ivarch Exp $
+# $Id: 01-load.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
 
 BEGIN {
-  print "1..1\n";
+	print "1..1\n";
 }
 
 require Term::VT102;
@@ -19,4 +19,4 @@ print "Version: " . $vt->version () . "\n";
 
 print "ok 1\n";
 
-# EOF
+# EOF $Id: 01-load.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $

@@ -6,16 +6,17 @@
 # Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
 # NO WARRANTY - see COPYING.
 #
-# $Id: 06-insdel.t,v 1.5 2001/05/21 22:11:25 ivarch Exp $
+# $Id: 06-insdel.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
 
 require Term::VT102;
+require 't/testbase';
 
 my $fill = "0123456789\r\n" .
            "1234567890\r\n" .
            "2345678901\r\n" .
            "3456789012\e[H";
 
-my @tests = (
+run_tests ([(
   [ 10, 4, $fill . "",				# 1: nothing
     "0123456789",
     "1234567890",
@@ -208,56 +209,6 @@ my @tests = (
     "2345678901",
     "3456789012",
   ],
-);
+)]);
 
-$nt = scalar @tests;		# number of sub-tests
-
-foreach $i (1 .. $nt) {
-  my $testref = shift @tests;
-  my ($cols, $rows, $text, @output) = @$testref;
-  my ($ncols, $nrows, $row, $line, $passed);
-
-  print "$i..$nt\n";
-
-  my $vt = Term::VT102->new ('cols' => $cols, 'rows' => $rows);
-
-  ($ncols, $nrows) = $vt->size ();
-
-  if (($cols != $ncols) or ($rows != $nrows)) {
-    print "not ok $i\n";
-    print STDERR "returned size: $ncols x $nrows, wanted $cols x $rows\n";
-    next;
-  }
-
-  $vt->process ($text);
-
-  $row = 0;
-  $passed = 1;
-
-  while ($line = shift @output) {
-    $row ++;
-    if ($vt->row_text ($row) ne $line) {
-      $passed = 0;
-      print STDERR "test $i: row $row incorrect, got '" .
-                   show_text ($vt->row_text ($row)) . "', expected '" .
-                   show_text ($line) . "'\n";
-      next;
-    }
-  }
-
-  if ($passed == 0) {
-    print "not ok $i\n";
-  } else {
-    print "ok $i\n";
-  }
-}
-
-
-sub show_text {
-  my ($text) = @_;
-  return "" if (not defined $text);
-  $text =~ s/([^\040-\176])/sprintf ("\\%o", ord ($1))/ge;
-  return $text;
-}
-
-# EOF
+# EOF $Id: 06-insdel.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $

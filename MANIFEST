@@ -1,9 +1,11 @@
 COPYING
+Changes
 INSTALL
 MANIFEST
 Makefile.PL
 README
-lib/Term/VT102.pm
+TODO
+VT102.pm
 t/01-load.t
 t/02-setsize.t
 t/03-text.t
@@ -13,3 +15,4 @@ t/06-insdel.t
 t/07-colour.t
 t/08-options.t
 t/09-callback.t
+t/testbase

@@ -11,7 +11,12 @@ than being able to tell you, say, what's on the top row of the screen.
 
 For installation instructions, see the INSTALL file.
 
-Term::VT102 was written by Andrew Wood <andrew.wood@ivarch.com>; send flames,
-bug reports, conversation, and all that sort of thing in that direction.
+Please send bug reports, comments, and so on to the project maintainer, Andrew
+Wood <andrew.wood@ivarch.com>.
 
-$Id: README,v 1.2 2001/05/20 16:58:20 ivarch Exp $
+Credit is also due to:
+
+  Charles Harker <CHarker@interland.com>
+    - reported and helped to diagnose a bug in the handling of TABs
+
+$Id: README,v 1.2 2002/04/29 20:54:08 ivarch Exp $

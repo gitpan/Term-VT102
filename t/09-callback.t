@@ -5,7 +5,7 @@
 # Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
 # NO WARRANTY - see COPYING.
 #
-# $Id: 09-callback.t,v 1.2 2001/05/21 22:28:24 ivarch Exp $
+# $Id: 09-callback.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
 
 require Term::VT102;
 
@@ -19,4 +19,4 @@ print "$i..$nt\n";
 print "ok $i\n";
 $i ++;
 
-# EOF
+# EOF $Id: 09-callback.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $

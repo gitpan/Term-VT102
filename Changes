@@ -1,0 +1,12 @@
+Changes that have been made over time:
+
+0.74 - 29 April 2002
+  + imported into CVS
+  + directory structure flattened (no more pointless lib/Term directory)
+  + created files TODO and Changes
+  + code formatting changes (i.e. use TABs for indent, spaces for formatting)
+  + fixed silly TAB handling problem - no longer write spaces when TABbing
+
+0.73 - 2 November 2001
+
+$Id: Changes,v 1.3 2002/04/29 20:54:08 ivarch Exp $

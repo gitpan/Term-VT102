@@ -5,7 +5,7 @@
 # Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
 # NO WARRANTY - see COPYING.
 #
-# $Id: 02-setsize.t,v 1.2 2001/05/20 16:58:20 ivarch Exp $
+# $Id: 02-setsize.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
 
 require Term::VT102;
 
@@ -20,25 +20,24 @@ require Term::VT102;
 $nt = ($#testsizes + 1) / 2;		# number of sub-tests
 
 foreach $i (1 .. $nt) {
+	print "$i..$nt\n";
 
-  print "$i..$nt\n";
+	$cols = shift @testsizes;
+	$rows = shift @testsizes;
 
-  $cols = shift @testsizes;
-  $rows = shift @testsizes;
+	my $vt = Term::VT102->new ('cols' => $cols, 'rows' => $rows);
 
-  my $vt = Term::VT102->new ('cols' => $cols, 'rows' => $rows);
+	($ncols, $nrows) = $vt->size ();
 
-  ($ncols, $nrows) = $vt->size ();
+	$cols = 80 if ($cols < 1);
+	$rows = 24 if ($rows < 1);
 
-  $cols = 80 if ($cols < 1);
-  $rows = 24 if ($rows < 1);
-
-  if (($cols != $ncols) or ($rows != $nrows)) {
-    print "not ok $i\n";
-    print STDERR "returned size: $ncols x $nrows, wanted $cols x $rows\n";
-  } else {
-    print "ok $i\n";
-  }
+	if (($cols != $ncols) or ($rows != $nrows)) {
+		print "not ok $i\n";
+		warn "returned size: $ncols x $nrows, wanted $cols x $rows\n";
+	} else {
+		print "ok $i\n";
+	}
 }
 
-# EOF
+# EOF $Id: 02-setsize.t,v 1.2 2002/04/16 23:43:59 ivarch Exp $
