@@ -3,7 +3,7 @@
 # Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
 # NO WARRANTY - see COPYING.
 #
-# $Id: VT102.pm,v 1.12 2001/05/21 22:28:24 ivarch Exp $
+# $Id: VT102.pm,v 1.15 2001/09/11 09:48:12 ivarch Exp $
 
 package Term::VT102;
 
@@ -13,7 +13,7 @@ BEGIN {
   use Exporter ();
   use vars qw($VERSION @ISA);
 
-  $VERSION = '0.70';
+  $VERSION = '0.73';
 
   @ISA = qw(Exporter);
 }
@@ -233,6 +233,8 @@ sub new {
     'XWINTITLE'		=> undef	# xterm window title changed
   ) };
 
+  $self->{'_callbackarg'} = { () };	# stored arguments for callbacks
+
   $self->{'cols'} = 80;			# default: 80 columns
   $self->{'rows'} = 24;			# default: 24 rows
 
@@ -253,20 +255,23 @@ sub new {
 #
 sub callback_call {
   my ($self, $callback, $par1, $par2) = (@_);
-  my ($func);
+  my ($func, $arg);
 
   $func = $self->{'_callbacks'}->{$callback};
   return if (not defined $func);
 
-  &{$func} ($self, $callback, $par1, $par2);
+  $arg = $self->{'_callbackarg'}->{$callback};
+
+  &{$func} ($self, $callback, $par1, $par2, $arg);
 }
 
 
 # Set a callback function.
 #
 sub callback_set {
-  my ($self, $callback, $ref) = (@_);
+  my ($self, $callback, $ref, $arg) = (@_);
   $self->{'_callbacks'}->{$callback} = $ref;
+  $self->{'_callbackarg'}->{$callback} = $arg;
 }
 
 
@@ -329,11 +334,59 @@ sub version {
 }
 
 
+# Return the current number of columns.
+#
+sub cols {
+  my $self = shift;
+  return $self->{'cols'};
+}
+
+
+# Return the current number of rows.
+#
+sub rows {
+  my $self = shift;
+  return $self->{'rows'};
+}
+
+
 # Return the current terminal size.
 #
 sub size {
   my $self = shift;
   return ( $self->{'cols'}, $self->{'rows'} );
+}
+
+
+# Return the current cursor X co-ordinate.
+#
+sub x {
+  my $self = shift;
+  return $self->{'x'};
+}
+
+
+# Return the current cursor Y co-ordinate.
+#
+sub y {
+  my $self = shift;
+  return $self->{'y'};
+}
+
+
+# Return the current xterm title text.
+#
+sub xtitle {
+  my $self = shift;
+  return $self->{'ti'};
+}
+
+
+# Return the current xterm icon text.
+#
+sub xicon {
+  my $self = shift;
+  return $self->{'ic'};
 }
 
 
@@ -938,6 +991,10 @@ sub _code_ED {				# erase display
 
   $attr = $self->attr_pack (7, 0, 0, 0, 0, 0, 0, 0);
 
+  # Wipe-cursor-to-end is the same as clear-whole-screen if cursor at top left
+  #
+  $num = 2 if (($num == 0) && ($self->{'x'} == 1) && ($self->{'y'} == 1));
+
   if ($num == 0) {				# 0 = cursor to end
     $self->{'scrt'}->[$self->{'y'}] =
       substr ($self->{'scrt'}->[$self->{'y'}], 0, $self->{'x'} - 1) .
@@ -1229,9 +1286,11 @@ I<$par1> and I<$par2>, as if the VT102 module had called it.
 Does nothing if that callback has not been set with
 B<callback_set ()>.
 
-=item B<callback_set> (I<$callback>, I<$ref>)
+=item B<callback_set> (I<$callback>, I<$ref>, I<$private>)
 
-Sets the callback I<callback> to function reference I<ref>.
+Sets the callback I<callback> to function reference I<ref> with
+private data I<$private>.
+
 See the section on B<CALLBACKS> below.
 
 =item B<new> (I<%config>)
@@ -1285,15 +1344,39 @@ as \0.
 Returns the textual contents of row I<$row> (or I<undef> if out of range),
 with totally unused characters being represented as NULL (\0).
 
+=item B<cols> ()
+
+Return the number of columns in the VT102 object.
+
+=item B<rows> ()
+
+Return the number of rows in the VT102 object.
+
 =item B<size> ()
 
 Return a pair of values (I<columns>,I<rows>) denoting the size of the terminal
 in the VT102 object.
 
+=item B<x> ()
+
+Return the current cursor X co-ordinate (1 being leftmost).
+
+=item B<y> ()
+
+Return the current cursor Y co-ordinate (1 being topmost).
+
+=item B<xtitle> ()
+
+Return the current xterm window title.
+
+=item B<xicon> ()
+
+Return the current xterm window icon name.
+
 =item B<status> ()
 
 Return a list of values
-(I<$X>,I<$Y>,I<$attr>,I<$ti>,I<$ic>), where I<$X> and I<$Y> are the cursor
+(I<$x>,I<$y>,I<$attr>,I<$ti>,I<$ic>), where I<$x> and I<$y> are the cursor
 co-ordinates (1,1 = top left), I<$attr> is a packed version of the current
 attributes (see B<attr_unpack>), I<$ti> is the xterm window title, and
 I<$ic> is the xterm window icon name.
@@ -1310,9 +1393,11 @@ Callbacks are the processing loop's way of letting your main program know
 that something has happened.  They are called while in a B<process()> loop.
 
 To specify a callback, use the B<callback_set> interface, giving a reference
-to the function to call.  Your function should take four scalar arguments:
+to the function to call.  Your function should take five scalar arguments:
 the VT102 object being processed, the name of the callback, and two
-arguments whose value depends on the callback, as shown below.
+arguments whose value depends on the callback, as shown below.  The final
+argument is the private data scalar you passed when you called
+B<callback_set>.
 
 The name of the callback is passed to the callback function so that you can
 have one function to handle all callbacks if you wish.
