@@ -17,4 +17,6 @@ t/07-colour.t
 t/08-options.t
 t/09-callback.t
 t/10-decaln.t
+t/11-decscrc.t
+t/12-cupsvrs.t
 t/testbase

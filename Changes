@@ -1,5 +1,9 @@
 Changes that have been made over time:
 
+0.77 - 27 November 2002
+  + implemented DECSC/DECRC (state save/restore)
+  + implemented CUPSV/CUPRS (cursor position save/restore)
+
 0.75 - 4 August 2002
   + corrected attribute behaviour when lines inserted/deleted/scrolled
   + example script showing how to use Term::VT102 with Net::Telnet
@@ -15,4 +19,4 @@ Changes that have been made over time:
 
 0.73 - 2 November 2001
 
-$Id: Changes,v 1.6 2002/08/04 20:18:23 ivarch Exp $
+$Id: Changes,v 1.7 2002/11/27 22:36:39 ivarch Exp $

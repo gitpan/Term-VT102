@@ -3,7 +3,7 @@
 # Copyright (C) Andrew Wood <andrew.wood@ivarch.com>
 # NO WARRANTY - see COPYING.
 #
-# $Id: VT102.pm,v 1.5 2002/08/04 20:18:23 ivarch Exp $
+# $Id: VT102.pm,v 1.6 2002/11/27 22:36:39 ivarch Exp $
 
 package Term::VT102;
 
@@ -13,7 +13,7 @@ BEGIN {
 	use Exporter ();
 	use vars qw($VERSION @ISA);
 
-	$VERSION = '0.75';
+	$VERSION = '0.77';
 
 	@ISA = qw(Exporter);
 }
@@ -142,8 +142,8 @@ sub new {
 	      'CUB' => \&_code_CUB,   # move cursor left
 	      'CUD' => \&_code_CUD,   # move cursor down
 	      'CUF' => \&_code_CUF,   # move cursor right
-	    'CUPRS' => undef,         # restore cursor position
-	    'CUPSV' => undef,         # save cursor position
+	    'CUPRS' => \&_code_CUPRS, # restore cursor position
+	    'CUPSV' => \&_code_CUPSV, # save cursor position
 	      'CUP' => \&_code_CUP,   # move cursor to row, column
 	      'CUU' => \&_code_CUU,   # move cursor up
 	       'DA' => \&_code_DA,    # return ESC [ ? 6 c (VT102)
@@ -154,8 +154,8 @@ sub new {
 	    'DECLL' => undef,         # set keyboard LEDs
 	   'DECPAM' => undef,         # set application keypad mode
 	   'DECPNM' => undef,         # set numeric keypad mode
-	    'DECRC' => undef,         # restore most recently saved state
-	    'DECSC' => undef,         # save state (position, charset, attributes)
+	    'DECRC' => \&_code_DECRC, # restore most recently saved state
+	    'DECSC' => \&_code_DECSC, # save state (position, charset, attributes)
 	  'DECSTBM' => \&_code_DECSTBM, # set scrolling region
 	      'DEL' => \&_code_IGN,   # ignored
 	       'DL' => \&_code_DL,    # delete lines
@@ -234,6 +234,9 @@ sub new {
 	) };
 
 	$self->{'_callbackarg'} = { () }; # stored arguments for callbacks
+
+	$self->{'_decsc'} = [ () ];       # saved state for DECSC/DECRC
+	$self->{'_cupsv'} = [ () ];       # saved state for CUPSV/CUPRS
 
 	$self->{'cols'} = 80;     # default: 80 columns
 	$self->{'rows'} = 24;     # default: 24 rows
@@ -1345,6 +1348,78 @@ sub _code_DECALN {                      # fill screen with E's
 	$self->{'y'} = 1;
 }
 
+sub _code_DECSC {                       # save state
+	my $self = shift;
+	my @state;
+
+	@state = @{$self->{'_decsc'}};
+	push (
+	  @state,
+	  [
+	    $self->{'x'},
+	    $self->{'y'},
+	    $self->{'attr'},
+	    $self->{'ti'},
+	    $self->{'ic'}
+	  ]
+	);
+	$self->{'_decsc'} = [ @state ];
+}
+
+sub _code_DECRC {                       # restore most recently saved state
+	my $self = shift;
+	my @state;
+	my $ref;
+
+	@state = @{$self->{'_decsc'}};
+	return if ($#state < 0);
+
+	$ref = pop @state;
+
+	(
+	  $self->{'x'},
+	  $self->{'y'},
+	  $self->{'attr'},
+	  $self->{'ti'},
+	  $self->{'ic'}
+	) = @$ref;
+
+	$self->{'_decsc'} = [ @state ];
+}
+
+sub _code_CUPSV {                       # save cursor position
+	my $self = shift;
+	my @state;
+
+	@state = @{$self->{'_cupsv'}};
+	push (
+	  @state,
+	  [
+	    $self->{'x'},
+	    $self->{'y'}
+	  ]
+	);
+	$self->{'_cupsv'} = [ @state ];
+}
+
+sub _code_CUPRS {                       # restore cursor position
+	my $self = shift;
+	my @state;
+	my $ref;
+
+	@state = @{$self->{'_cupsv'}};
+	return if ($#state < 0);
+
+	$ref = pop @state;
+
+	(
+	  $self->{'x'},
+	  $self->{'y'}
+	) = @$ref;
+
+	$self->{'_cupsv'} = [ @state ];
+}
+
 1;
 __END__
 
@@ -1584,6 +1659,9 @@ The following sequences are supported:
    177 (DEL)   ignored
    233 (CSI)   same as ESC [
 
+   ESC 7 (DECSC)   save state
+   ESC 8 (DECRC)   restore most recently saved state
+
    ESC # 8 (DECALN)  DEC screen alignment test - fill screen with E's
 
    CSI @ (ICH)     insert blank characters
@@ -1609,6 +1687,8 @@ The following sequences are supported:
    CSI m (SGR)     set graphic rendition
    CSI n (DSR)     device status report
    CSI r (DECSTBM) set scrolling region to (top, bottom) rows
+   CSI s (CUPSV)   save cursor position
+   CSI u (CUPRS)   restore cursor position
    CSI ` (HPA)     move cursor to column in current row
 
 =head1 LIMITATIONS
@@ -1618,26 +1698,22 @@ sequences pertaining to character sets are ignored.
 
 The following known control characters / sequences are ignored:
 
-   005 (ENQ)         trigger answerback message
-   021 (XON)         resume transmission
-   023 (XOFF)        stop transmission
+   005 (ENQ)       trigger answerback message
+   021 (XON)       resume transmission
+   023 (XOFF)      stop transmission
 
-   ESC 7  (DECSC)    save state
-   ESC 8  (DECRC)    restore most recently saved state
-   ESC >  (DECPNM)   set numeric keypad mode
-   ESC =  (DECPAM)   set application keypad mode
-   ESC H  (HTS)      set tab stop at current column
-   ESC P  (DCS)      device control string (ended by ST)
-   ESC X  (SOS)      start of string
-   ESC ^  (PM)       privacy message (ended by ST)
-   ESC \  (ST)       string terminator
+   ESC > (DECPNM)  set numeric keypad mode
+   ESC = (DECPAM)  set application keypad mode
+   ESC H (HTS)     set tab stop at current column
+   ESC P (DCS)     device control string (ended by ST)
+   ESC X (SOS)     start of string
+   ESC ^ (PM)      privacy message (ended by ST)
+   ESC \ (ST)      string terminator
 
-   CSI g (TBC)       clear tab stop (CSI 3 g = clear all stops)
-   CSI h (SM)        set mode
-   CSI l (RM)        reset mode
-   CSI q (DECLL)     set keyboard LEDs
-   CSI s (CUPSV)     save cursor position
-   CSI u (CUPRS)     restore cursor position
+   CSI g (TBC)     clear tab stop (CSI 3 g = clear all stops)
+   CSI h (SM)      set mode
+   CSI l (RM)      reset mode
+   CSI q (DECLL)   set keyboard LEDs
 
 =head1 EXAMPLES
 
@@ -1663,4 +1739,4 @@ B<console_codes>(4)
 
 =cut
 
-# EOF $Id: VT102.pm,v 1.5 2002/08/04 20:18:23 ivarch Exp $
+# EOF $Id: VT102.pm,v 1.6 2002/11/27 22:36:39 ivarch Exp $
