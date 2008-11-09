@@ -12,7 +12,7 @@ BEGIN {
 	use Exporter ();
 	use vars qw($VERSION @ISA);
 
-	$VERSION = '0.82';
+	$VERSION = '0.91';
 
 	@ISA = qw(Exporter);
 }
@@ -136,13 +136,15 @@ sub new {
 	   'P' => 'DCS',              # device control string (ended by ST)
 	   'X' => 'SOS',              # start of string
 	   '^' => 'PM',               # privacy message (ended by ST)
+	   '_' => 'APC',              # application program command (ended by ST)
 	  "\\" => 'ST',               # string terminator
 	   'n' => 'LS2',              # invoke G2 charset
 	   'o' => 'LS3',              # invoke G3 charset
 	   '|' => 'LS3R',             # invoke G3 charset as GR
 	   '}' => 'LS2R',             # invoke G2 charset as GR
 	   '~' => 'LS1R',             # invoke G1 charset as GR
-	   ']' => 'OSC'               # operating system command
+	   ']' => 'OSC',              # operating system command
+	   'g' => 'BEL',              # alternate BEL
 	) };
 
 	$self->{'_csiseq'} = { (  # ECMA-48 CSI sequences
@@ -227,14 +229,15 @@ sub new {
 	       'HT' => \&_code_HT,    # horizontal tab to next tab stop
 	       'IL' => \&_code_IL,    # insert blank lines
 	       'LF' => \&_code_LF,    # line feed
-	       'PM' => undef,         # privacy message (ended by ST)
-	       'RI' => \&_code_CUU,   # reverse line feed
+	       'PM' => \&_code_PM,    # privacy message (ended by ST)
+	       'RI' => \&_code_RI,    # reverse line feed
 	       'RM' => \&_code_RM,    # reset mode
 	       'SI' => undef,         # activate G0 character set
 	       'SM' => \&_code_SM,    # set mode
 	       'SO' => undef,         # activate G1 character set & CR
 	       'ST' => undef,         # string terminator
 	       'VT' => \&_code_LF,    # line feed
+	      'APC' => \&_code_APC,   # application program command (ended by ST)
 	      'BEL' => \&_code_BEL,   # beep
 	      'CAN' => \&_code_CAN,   # interrupt escape sequence
 	      'CHA' => \&_code_CHA,   # move cursor to column in current row
@@ -248,7 +251,7 @@ sub new {
 	      'CUP' => \&_code_CUP,   # move cursor to row, column
 	      'CUU' => \&_code_CUU,   # move cursor up
 	      'DCH' => \&_code_DCH,   # delete characters on current line
-	      'DCS' => undef,         # device control string (ended by ST)
+	      'DCS' => \&_code_DCS,   # device control string (ended by ST)
 	      'DEL' => \&_code_IGN,   # ignored
 	      'DSR' => \&_code_DSR,   # device status report
 	      'EBM' => undef,         # editing boundary mode
@@ -259,7 +262,7 @@ sub new {
 	      'HEM' => undef,         # horizontal editing mode
 	      'HPA' => \&_code_CHA,   # move cursor to column in current row
 	      'HPR' => \&_code_CUF,   # move cursor right
-	      'HTS' => undef,         # set tab stop at current column
+	      'HTS' => \&_code_HTS,   # set tab stop at current column
 	      'HVP' => \&_code_CUP,   # move cursor to row, column
 	      'ICH' => \&_code_ICH,   # insert blank characters
 	      'IGN' => \&_code_IGN,   # ignored control sequence
@@ -269,7 +272,7 @@ sub new {
 	      'LNM' => undef,         # line feed / newline mode
 	      'LS2' => undef,         # invoke G2 charset
 	      'LS3' => undef,         # invoke G3 charset
-	      'NEL' => \&_code_CUD,   # newline
+	      'NEL' => \&_code_NEL,   # newline
 	      'NUL' => \&_code_IGN,   # ignored
 	      'OSC' => \&_code_OSC,   # operating system command
 	      'PUM' => undef,         # positioning unit mode
@@ -280,7 +283,7 @@ sub new {
 	      'SS2' => undef,         # select G2 charset for next char only
 	      'SS3' => undef,         # select G3 charset for next char only
 	      'SUB' => \&_code_CAN,   # interrupt escape sequence
-	      'TBC' => undef,         # clear tab stop (CSI 3 g = clear all stops)
+	      'TBC' => \&_code_TBC,   # clear tab stop (CSI 3 g = clear all stops)
 	      'TSM' => undef,         # tabulation stop mode
 	      'TTM' => undef,         # transfer termination mode
 	      'VEM' => undef,         # vertical editing mode
@@ -349,8 +352,10 @@ sub new {
 	  'SCROLL_DOWN'       => undef,   # text about to move up (par=top row)
 	  'SCROLL_UP'         => undef,   # text about to move down (par=bott.)
 	  'UNKNOWN'           => undef,   # unknown character / sequence
+	  'STRING'            => undef,   # string received
 	  'XICONNAME'         => undef,   # xterm icon name changed
-	  'XWINTITLE'         => undef    # xterm window title changed
+	  'XWINTITLE'         => undef,   # xterm window title changed
+	  'LINEFEED'          => undef,   # line feed about to be processed
 	) };
 
 	$self->{'_callbackarg'} = { () }; # stored arguments for callbacks
@@ -361,6 +366,8 @@ sub new {
 
 	$self->{'cols'} = 80;     # default: 80 columns
 	$self->{'rows'} = 24;     # default: 24 rows
+
+	$self->{'_tabstops'} = [];        # tab stops
 
 	$self->{'cols'} = $init{'cols'}
 	  if ((defined $init{'cols'}) && ($init{'cols'} > 0));
@@ -431,8 +438,13 @@ sub reset {
 		($self->{'scrt'}->[$i], $self->{'scra'}->[$i]) = ($a, $b);
 	}
 
+	$self->{'_tabstops'} = [];            # reset tab stops
+	for ($i = 1; $i < $self->{'cols'}; $i += 8) {
+		$self->{'_tabstops'}->[$i] = 1;
+	}
+
 	$self->{'_buf'} = undef;              # blank the esc-sequence buffer
-	$self->{'_inesc'} = 0;                # not in any escape sequence
+	$self->{'_inesc'} = '';               # not in any escape sequence
 	$self->{'_xon'} = 1;                  # state is XON (chars accepted)
 
 	$self->{'cursor'} = 1;                # turn cursor on
@@ -553,12 +565,17 @@ sub process {
 	while (length $string > 0) {
 		if (defined $self->{'_buf'}) {        # in escape sequence
 			if ($string =~ s/^(.)//s) {
-				$self->{'_buf'} .= $1;
-				$self->_process_escseq ();
+				my $ch = $1;
+				if ($ch =~ /[\x00-\x1F]/s) {
+					$self->_process_ctl ($ch);
+				} else {
+					$self->{'_buf'} .= $ch;
+					$self->_process_escseq ();
+				}
 			}
 		} else {                              # not in escape sequence
 			if ($string =~
-			    s/^([\040-\176\200-\232\234-\377]+)//s) {
+			    s/^([^\x00-\x1F\x7F\x9B]+)//s) {
 				$self->_process_text ($1);
 			} elsif ($string =~ s/^(.)//s) {
 				$self->_process_ctl ($1);
@@ -671,6 +688,96 @@ sub row_plaintext {
 }
 
 
+# Return a set of SGR escape sequences that will change colours and
+# attributes from "source" to "dest" (packed attributes).
+#
+sub sgr_change {
+	shift if ref($_[0]);
+	my ($source, $dest) = @_;
+	my ($out, %off, %on) = ('', (), ());
+
+	$source = DEFAULT_ATTR_PACKED if (not defined $source);
+	$dest = DEFAULT_ATTR_PACKED if (not defined $dest);
+
+	return '' if ($source eq $dest);
+	return "\e[m" if ($dest eq DEFAULT_ATTR_PACKED);
+
+	my ($sfg, $sbg, $sbo, $sfa, $sst, $sul, $sbl, $srv) = attr_unpack ($source);
+	my ($dfg, $dbg, $dbo, $dfa, $dst, $dul, $dbl, $drv) = attr_unpack ($dest);
+
+	if (($sfg != $dfg) || ($sbg != $dbg)) {
+		$out .= sprintf ("\e[m\e[3%d;4%dm", $dfg, $dbg);
+		($sbo, $sfa, $sst, $sul, $sbl, $srv) = (0, 0, 0, 0, 0, 0);
+	}
+
+	if (($sbo > $dbo) || ($sfa > $dfa)) {
+		$off{'22'} = 1;
+		($sbo, $sfa) = (0, 0);
+	}
+	$off{'24'} = 1 if ($sul > $dul);
+	$off{'25'} = 1 if ($sbl > $dbl);
+	$off{'27'} = 1 if ($srv > $drv);
+
+	if (scalar keys %off > 2) {
+		$out .= "\e[m";
+		($sbo, $sfa, $sst, $sul, $sbl, $srv) = (0, 0, 0, 0, 0, 0);
+	} elsif (scalar keys %off > 0) {
+		$out .= "\e[" . join (';', keys %off) . "m";
+	}
+
+	$on{'1'} = 1 if ($dbo > $sbo);
+	$on{'2'} = 1 if (($dfa > $sfa) && !($dbo > $sbo));
+	$on{'4'} = 1 if ($dul > $sul);
+	$on{'5'} = 1 if ($dbl > $sbl);
+	$on{'7'} = 1 if ($drv > $srv);
+
+	$out .= "\e[" . join (';', keys %on) . "m" if (scalar keys %on > 0);
+
+	return $out;
+}
+
+
+# Return the textual contents of the given row, or undef if out of range,
+# with unused characters represented as a space instead of \0, and any
+# colour or attribute changes expressed by the relevant SGR escape
+# sequences.
+#
+sub row_sgrtext {
+	my ($self, $row, $startcol, $endcol) = @_;
+	my ($row_text, $row_attr, $text, $char, $attr_cur, $attr_next);
+
+	return undef if ($row < 1);
+	return undef if ($row > $self->{'rows'});
+
+	$startcol = 1 if (not defined $startcol);
+	$endcol = $self->{'cols'} if (not defined $endcol);
+
+	return undef if (($startcol < 1) || ($startcol > $self->{'cols'}));
+	return undef if (($endcol < 1) || ($endcol > $self->{'cols'}));
+	return undef if ($endcol < $startcol);
+
+	$row_text = $self->{'scrt'}->[$row];
+	$row_attr = $self->{'scra'}->[$row];
+
+	$text = '';
+	$attr_cur = DEFAULT_ATTR_PACKED;
+
+	for (; $startcol <= $endcol; $startcol++) {
+		$char = substr ($row_text, $startcol - 1, 1);
+		$char =~ s/\0/ /g;
+		$char = ' ' if ($char !~ /./);
+		$attr_next = substr ($row_attr, ($startcol - 1) * 2, 2);
+		$text .= $self->sgr_change ($attr_cur, $attr_next) . $char;
+		$attr_cur = $attr_next;
+	}
+
+	$attr_next = DEFAULT_ATTR_PACKED;
+	$text .= $self->sgr_change ($attr_cur, $attr_next);
+
+	return $text;
+}
+
+
 # Process a string of plain text, with no special characters in it.
 #
 sub _process_text {
@@ -713,11 +820,13 @@ sub _process_text {
 			  2 * (length $segment)
 			) = $self->{'attr'} x (length $segment);
 			$self->{'x'} += length $segment;
-		}
-		if ($self->{'x'} > $self->{'cols'}) {       # wrap to next line
-			$self->callback_call ('ROWCHANGE', $self->{'y'}, 0);
-			$self->{'x'} = 1;
-			$self->_code_CUD (1);
+		} else {
+			if ($self->{'x'} > $self->{'cols'}) {       # wrap to next line
+				$self->callback_call ('ROWCHANGE', $self->{'y'}, 0);
+				$self->callback_call ('LINEFEED', $self->{'y'}, 0);
+				$self->{'x'} = 1;
+				$self->_move_down;
+			}
 		}
 		$width = ($self->{'cols'} + 1) - $self->{'x'};
 	}
@@ -762,9 +871,9 @@ sub _process_escseq {
 	return if (length $self->{'_buf'} < 1);
 	return if ($self->{'_xon'} == 0);
 
-	if ($self->{'_inesc'} == 3) {                 # in OSC sequence
+	if ($self->{'_inesc'} eq 'OSC') {                 # in OSC sequence
 		if (
-		  $self->{'_buf'} =~ /^0;([^\007]*)\007/
+		  $self->{'_buf'} =~ /^0;([^\007]*)(?:\007|\033\\)/
 		) {                                         # icon & window
 			$dat = $1;
 			$self->callback_call ('XWINTITLE', $dat, 0);
@@ -772,23 +881,31 @@ sub _process_escseq {
 			$self->{'ic'} = $dat;
 			$self->{'ti'} = $dat;
 			$self->{'_buf'} = undef;
-			$self->{'_inesc'} = 0;
+			$self->{'_inesc'} = '';
 		} elsif (
-		  $self->{'_buf'} =~ /^1;([^\007]*)\007/
+		  $self->{'_buf'} =~ /^1;([^\007]*)(?:\007|\033\\)/
 		) {                                         # set icon name
 			$dat = $1;
 			$self->callback_call ('XICONNAME', $dat, 0);
 			$self->{'ic'} = $dat;
 			$self->{'_buf'} = undef;
-			$self->{'_inesc'} = 0;
+			$self->{'_inesc'} = '';
 		} elsif (
-		  $self->{'_buf'} =~ /^2;([^\007]*)\007/
+		  $self->{'_buf'} =~ /^2;([^\007]*)(?:\007|\033\\)/
 		) {                                         # set window title
 			$dat = $1;
 			$self->callback_call ('XWINTITLE', $dat, 0);
 			$self->{'ti'} = $dat;
 			$self->{'_buf'} = undef;
-			$self->{'_inesc'} = 0;
+			$self->{'_inesc'} = '';
+		} elsif (
+		  $self->{'_buf'} =~ /^\d+;([^\007]*)(?:\007|\033\\)/
+		) {                                         # unknown OSC
+			$self->callback_call (
+			  'UNKNOWN', 'OSC', "\033]" . $self->{'_buf'}
+			);
+			$self->{'_buf'} = undef;
+			$self->{'_inesc'} = '';
 		} elsif (
 		  length $self->{'_buf'} > 1024
 		) {                                         # OSC too long
@@ -796,9 +913,9 @@ sub _process_escseq {
 			  'UNKNOWN', 'OSC', "\033]" . $self->{'_buf'}
 			);
 			$self->{'_buf'} = undef;
-			$self->{'_inesc'} = 0;
+			$self->{'_inesc'} = '';
 		}
-	} elsif ($self->{'_inesc'} == 2) {            # in CSI sequence
+	} elsif ($self->{'_inesc'} eq 'CSI') {            # in CSI sequence
 		foreach $suffix (keys %{$self->{'_csiseq'}}) {
 			next if (length $self->{'_buf'} < length $suffix);
 			next if (
@@ -822,12 +939,12 @@ sub _process_escseq {
 				  "\033[" . $self->{'_buf'} . $suffix
 				);
 				$self->{'_buf'} = undef;
-				$self->{'_inesc'} = 0;
+				$self->{'_inesc'} = '';
 				return;
 			}
 			@params = split (';', $self->{'_buf'});
 			$self->{'_buf'} = undef;
-			$self->{'_inesc'} = 0;
+			$self->{'_inesc'} = '';
 			&{$func} ($self, @params);
 			return;
 		}
@@ -838,7 +955,27 @@ sub _process_escseq {
 			  'UNKNOWN', 'CSI', "\033[" . $self->{'_buf'}
 			);
 			$self->{'_buf'} = undef;
-			$self->{'_inesc'} = 0;
+			$self->{'_inesc'} = '';
+		}
+	} elsif ($self->{'_inesc'} =~ /_ST$/) {
+		if ($self->{'_buf'} =~ s/\033\\$//) {
+			$self->{'_inesc'} =~ s/_ST$//;
+			$self->callback_call (
+			  'STRING', $self->{'_inesc'}, $self->{'_buf'}
+			);
+			$self->{'_buf'} = undef;
+			$self->{'_inesc'} = '';
+			$self->{'_buf'} = undef;
+			$self->{'_inesc'} = '';
+		} elsif (
+		  length $self->{'_buf'} > 1024
+		) {                                         # string too long
+			$self->{'_inesc'} =~ s/_ST$//;
+			$self->callback_call (
+			  'STRING', $self->{'_inesc'}, $self->{'_buf'}
+			);
+			$self->{'_buf'} = undef;
+			$self->{'_inesc'} = '';
 		}
 	} else {                                      # in ESC sequence
 		foreach $prefix (
@@ -857,11 +994,11 @@ sub _process_escseq {
 				  "\033" . $self->{'_buf'}
 				);
 				$self->{'_buf'} = undef;
-				$self->{'_inesc'} = 0;
+				$self->{'_inesc'} = '';
 				return;
 			}
 			$self->{'_buf'} = undef;
-			$self->{'_inesc'} = 0;
+			$self->{'_inesc'} = '';
 			&{$func} ($self);
 			return;
 		}
@@ -874,7 +1011,7 @@ sub _process_escseq {
 			  "\033" . $self->{'_buf'}
 			);
 			$self->{'_buf'} = undef;
-			$self->{'_inesc'} = 0;
+			$self->{'_inesc'} = '';
 		}
 	}
 }
@@ -942,69 +1079,24 @@ sub _scroll_down {
 }
 
 
-sub _code_BEL {                         # beep
-	my $self = shift;
-	$self->callback_call ('BELL', 0, 0);
-}
-
-sub _code_BS {                          # move left 1 character
-	my $self = shift;
-	$self->_code_CUB (1);                         # (cursor left 1)
-}
-
-sub _code_CAN {                         # cancel escape sequence
-	my $self = shift;
-	$self->{'_inesc'} = 0;
-	$self->{'_buf'} = undef;
-}
-
-sub _code_CHA {                         # move to column in current row
-	my $self = shift;
-	my $col = shift;
-	$col = 1 if (not defined $col);
-	return if ($self->{'x'} == $col);
-	$self->{'x'} = $col;
-	$self->{'x'} = 1 if ($self->{'x'} < 1);
-	$self->{'x'} = $self->{'cols'} if ($self->{'x'} > $self->{'cols'});
-}
-
-sub _code_CNL {                         # move cursor down and to column 1
-	my $self = shift;
-	my $num = shift;
-	$num = 1 if (not defined $num);
-	$self->_code_CUD ($num);                      # move down
-	$self->_code_CR ();                           # move to column 1
-}
-
-sub _code_CPL {                         # move cursor up and to column 1
-	my $self = shift;
-	my $num = shift;
-	$num = 1 if (not defined $num);
-	$self->_code_CUU ($num);                      # move up
-	$self->_code_CR ();                           # move to column 1
-}
-
-sub _code_CR {                          # carriage return
-	my $self = shift;
-	$self->{'x'} = 1;
-}
-
-sub _code_CSI {                         # ESC [
-	my $self = shift;
-	$self->{'_buf'} = '';                         # restart ESC buffering
-	$self->{'_inesc'} = 2;                        # ...for a CSI, not an ESC
-}
-
-sub _code_CUB {                         # move cursor left
+# Move the cursor up the given number of lines, without triggering a GOTO callback, taking scrolling into account.
+#
+sub _move_up {
 	my $self = shift;
 	my $num = shift;
 	$num = 1 if (not defined $num);
 	$num = 1 if ($num < 1);
-	$self->{'x'} -= $num;
-	$self->{'x'} = 1 if ($self->{'x'} < 1);
+	$self->{'y'} -= $num;
+	return if ($self->{'y'} >= $self->{'srt'});
+	$self->_scroll_up ($self->{'srt'} - $self->{'y'});            # scroll
+	$self->{'y'} = $self->{'srt'};
 }
 
-sub _code_CUD {                         # move cursor down
+
+# Move the cursor down the given number of lines, without triggering a GOTO
+# callback, taking scrolling into account.
+#
+sub _move_down {
 	my $self = shift;
 	my $num = shift;
 	$num = 1 if (not defined $num);
@@ -1015,11 +1107,105 @@ sub _code_CUD {                         # move cursor down
 	$self->{'y'} = $self->{'srb'};
 }
 
+
+sub _code_BEL {                         # beep
+	my $self = shift;
+	if ((defined $self->{'_buf'}) && ($self->{'_inesc'} eq 'OSC')) {
+		# CSI OSC can be terminated with a BEL
+		$self->{'_buf'} .= "\007";
+		$self->_process_escseq ();
+	} else {
+		$self->callback_call ('BELL', 0, 0);
+	}
+}
+
+sub _code_BS {                          # move left 1 character
+	my $self = shift;
+	$self->{'x'} --;
+	$self->{'x'} = 1 if ($self->{'x'} < 1);
+}
+
+sub _code_CAN {                         # cancel escape sequence
+	my $self = shift;
+	$self->{'_inesc'} = '';
+	$self->{'_buf'} = undef;
+}
+
+sub _code_TBC {                         # clear tab stop (CSI 3 g = clear all stops)
+	my $self = shift;
+	my $num = shift;
+	if ((defined $num) && ($num eq '3')) {
+		$self->{'_tabstops'} = [];
+	} else {
+		$self->{'_tabstops'}->[$self->{'x'}] = undef;
+	}
+}
+
+sub _code_CHA {                         # move to column in current row
+	my $self = shift;
+	my $col = shift;
+	$col = 1 if (not defined $col);
+	return if ($self->{'x'} == $col);
+	$self->callback_call ('GOTO', $col, $self->{'y'});
+	$self->{'x'} = $col;
+	$self->{'x'} = 1 if ($self->{'x'} < 1);
+	$self->{'x'} = $self->{'cols'} if ($self->{'x'} > $self->{'cols'});
+}
+
+sub _code_CNL {                         # move cursor down and to column 1
+	my $self = shift;
+	my $num = shift;
+	$num = 1 if (not defined $num);
+	$self->callback_call ('GOTO', 1, $self->{'y'} + $num);
+	$self->{'x'} = 1;
+	$self->_move_down ($num);
+}
+
+sub _code_CPL {                         # move cursor up and to column 1
+	my $self = shift;
+	my $num = shift;
+	$num = 1 if (not defined $num);
+	$self->callback_call ('GOTO', $self->{'x'}, $self->{'y'} - $num);
+	$self->{'x'} = 1;
+	$self->_move_up ($num);
+}
+
+sub _code_CR {                          # carriage return
+	my $self = shift;
+	$self->{'x'} = 1;
+}
+
+sub _code_CSI {                         # ESC [
+	my $self = shift;
+	$self->{'_buf'} = '';                         # restart ESC buffering
+	$self->{'_inesc'} = 'CSI';                    # ...for a CSI, not an ESC
+}
+
+sub _code_CUB {                         # move cursor left
+	my $self = shift;
+	my $num = shift;
+	$num = 1 if (not defined $num);
+	$num = 1 if ($num < 1);
+	$self->callback_call ('GOTO', $self->{'x'} - $num, $self->{'y'});
+	$self->{'x'} -= $num;
+	$self->{'x'} = 1 if ($self->{'x'} < 1);
+}
+
+sub _code_CUD {                         # move cursor down
+	my $self = shift;
+	my $num = shift;
+	$num = 1 if (not defined $num);
+	$num = 1 if ($num < 1);
+	$self->callback_call ('GOTO', $self->{'x'}, $self->{'y'} + $num);
+	$self->_move_down ($num);
+}
+
 sub _code_CUF {                         # move cursor right
 	my $self = shift;
 	my $num = shift;
 	$num = 1 if (not defined $num);
 	$num = 1 if ($num < 1);
+	$self->callback_call ('GOTO', $self->{'x'} + $num, $self->{'y'});
 	$self->{'x'} += $num;
 	$self->{'x'} = $self->{'cols'} if ($self->{'x'} > $self->{'cols'});
 }
@@ -1033,8 +1219,15 @@ sub _code_CUP {                         # move cursor to row, column
 	$col = 1 if ($col < 1);
 	$row = $self->{'rows'} if ($row > $self->{'rows'});
 	$col = $self->{'cols'} if ($col > $self->{'cols'});
+	$self->callback_call ('GOTO', $col, $row);
 	$self->{'x'} = $col;
 	$self->{'y'} = $row;
+}
+
+sub _code_RI {                          # reverse line feed
+	my $self = shift;
+	$self->callback_call ('GOTO', $self->{'x'}, $self->{'y'} - 1);
+	$self->_move_up;
 }
 
 sub _code_CUU {                         # move cursor up
@@ -1042,10 +1235,8 @@ sub _code_CUU {                         # move cursor up
 	my $num = shift;
 	$num = 1 if (not defined $num);
 	$num = 1 if ($num < 1);
-	$self->{'y'} -= $num;
-	return if ($self->{'y'} >= $self->{'srt'});
-	$self->_scroll_up ($self->{'srt'} - $self->{'y'});            # scroll
-	$self->{'y'} = $self->{'srt'};
+	$self->callback_call ('GOTO', $self->{'x'}, $self->{'y'} - $num);
+	$self->_move_up ($num);
 }
 
 sub _code_DA {                          # return ESC [ ? 6 c (VT102)
@@ -1079,6 +1270,12 @@ sub _code_DCH {                         # delete characters on current line
 	$self->{'scra'}->[$self->{'y'}] = $lsub . $rsub . ($attr x $todel);
 
 	$self->callback_call ('ROWCHANGE', $self->{'y'}, 0);
+}
+
+sub _code_DCS {                         # device control string (ignored)
+	my $self = shift;
+	$self->{'_buf'} = '';
+	$self->{'_inesc'} = 'DCS_ST';
 }
 
 sub _code_DECSTBM {                     # set scrolling region
@@ -1283,30 +1480,61 @@ sub _code_EL {                          # erase line
 
 sub _code_ESC {                         # start escape sequence
 	my $self = shift;
+	if ((defined $self->{'_buf'}) && ($self->{'_inesc'} =~ /OSC|_ST/)) {
+		# Some sequences are terminated with an ST
+		$self->{'_buf'} .= "\033";
+		$self->_process_escseq ();
+		return;
+	}
 	$self->{'_buf'} = '';                         # set ESC buffer
-	$self->{'_inesc'} = 1;                        # ...for ESC, not CSI
+	$self->{'_inesc'} = 'ESC';                    # ...for ESC, not CSI
 }
 
 sub _code_LF {                          # line feed
 	my $self = shift;
 	$self->_code_CR ()                            # cursor to start of line
 	  if ($self->{'opts'}->{'LFTOCRLF'} != 0);
-	$self->_code_CUD (1);                         # cursor down
+	$self->callback_call ('LINEFEED', $self->{'y'}, 0);
+	$self->_move_down ();
+}
+
+sub _code_NEL {                         # newline
+	my $self = shift;
+	$self->_code_CR ();                           # cursor always to start
+	$self->_code_LF ();                           # standard line feed
 }
 
 sub _code_HT {                          # horizontal tab to next tab stop
 	my $self = shift;
 	my ($newx, $spaces, $width);
 
-	$newx = $self->{'x'};
-	$newx ++;
-	while ((($newx - 1) % 8) != 0) { $newx ++; }
+	if (
+	  ($self->{'opts'}->{'LINEWRAP'} != 0)
+	  && ($self->{'x'} >= $self->{'cols'})
+	) {
+		$self->callback_call ('LINEFEED', $self->{'y'}, 0);
+		$self->{'x'} = 1;
+		$self->_move_down;
+	}
+
+	$newx = $self->{'x'} + 1;
+	while ($newx < $self->{'cols'} && not $self->{'_tabstops'}->[$newx]) {
+		$newx++;
+	}
 
 	$width = ($self->{'cols'} + 1) - $self->{'x'};
 	$spaces = $newx - $self->{'x'};
 	$spaces = $width + 1 if ($spaces > $width);
 
-	$self->_code_CUF ($spaces) if ($spaces > 0);
+	if ($spaces > 0) {
+		$self->{'x'} += $spaces;
+		$self->{'x'} = $self->{'cols'} if ($self->{'x'} > $self->{'cols'});
+	}
+}
+
+sub _code_HTS {                         # set tab stop at current column
+	my $self = shift;
+	$self->{'_tabstops'}->[$self->{'x'}] = 1;
 }
 
 sub _code_ICH {                         # insert blank characters
@@ -1368,10 +1596,22 @@ sub _code_IL {                          # insert blank lines
 	}
 }
 
+sub _code_PM {                          # privacy message (ignored)
+	my $self = shift;
+	$self->{'_buf'} = '';
+	$self->{'_inesc'} = 'PM_ST';
+}
+
+sub _code_APC {                         # application program command (ignored)
+	my $self = shift;
+	$self->{'_buf'} = '';
+	$self->{'_inesc'} = 'APC_ST';
+}
+
 sub _code_OSC {                         # operating system command
 	my $self = shift;
 	$self->{'_buf'} = '';                         # restart buffering
-	$self->{'_inesc'} = 3;                        # ...for OSC, not ESC or CSI
+	$self->{'_inesc'} = 'OSC';                    # ...for OSC, not ESC or CSI
 }
 
 sub _code_RIS {                         # reset
@@ -1394,11 +1634,11 @@ sub _toggle_mode {                      # set/reset modes
 			  "\033[${mode}" . ($flag ? "h" : "l")
 			);
 			$self->{'_buf'} = undef;
-			$self->{'_inesc'} = 0;
+			$self->{'_inesc'} = '';
 			return;
 		}
 		$self->{'_buf'} = undef;
-		$self->{'_inesc'} = 0;
+		$self->{'_inesc'} = '';
 		&{$func} ($self, $flag);
 		return;
 	}
@@ -1692,6 +1932,13 @@ use the B<attr_unpack()> method to unpack that character cell's attributes.
 If I<$startcol> and I<$endcol> are defined, only returns the part of the row
 between columns I<$startcol> and I<$endcol> inclusive instead of the whole row.
 
+=item B<row_text> (I<$row>, [I<$startcol>, I<$endcol>])
+
+Returns the textual contents of row I<$row> (or I<undef> if out of range), with
+totally unused characters being represented as NULL (\0).  If I<$startcol> and
+I<$endcol> are defined, only returns the part of the row between columns
+I<$startcol> and I<$endcol> inclusive instead of the whole row.
+
 =item B<row_plaintext> (I<$row>, [I<$startcol>, I<$endcol>])
 
 Returns the textual contents of row I<$row> (or I<undef> if out of range),
@@ -1699,12 +1946,23 @@ with unused characters being represented as spaces.  If I<$startcol> and
 I<$endcol> are defined, only returns the part of the row between columns
 I<$startcol> and I<$endcol> inclusive instead of the whole row.
 
-=item B<row_text> (I<$row>, [I<$startcol>, I<$endcol>])
+=item B<row_sgrtext> (I<$row>, [I<$startcol>, I<$endcol>])
 
-Returns the textual contents of row I<$row> (or I<undef> if out of range), with
-totally unused characters being represented as NULL (\0).  If I<$startcol> and
-I<$endcol> are defined, only returns the part of the row between columns
-I<$startcol> and I<$endcol> inclusive instead of the whole row.
+Returns the textual contents of row I<$row> (or I<undef> if out of range),
+with unused characters being represented as spaces, and ANSI/ECMA-48 escape
+sequences (CSI SGR) used to set the colours and attributes as appropriate.
+If I<$startcol> and I<$endcol> are defined, only returns the part of the row
+between columns I<$startcol> and I<$endcol> inclusive instead of the whole
+row.
+
+Use B<row_sgrtext> to get a row if you want to output it to a real terminal
+and preserve all colours, bold, etc.
+
+=item B<sgr_change> (I<$source>, I<$dest>)
+
+Returns a string containing ANSI/ECMA-48 escape sequences to change colours
+and attributes from I<$source> to I<$dest>, which are both packed attributes
+(see B<attr_pack>).  This is used internally by B<row_sgrtext>.
 
 =item B<cols> ()
 
@@ -1722,6 +1980,10 @@ in the VT102 object.
 =item B<x> ()
 
 Return the current cursor X co-ordinate (1 being leftmost).
+
+B<Note:> It is possible for the current X co-ordinate to be 1 more than the
+number of columns. This happens when the end of a row is reached such that
+the next character would wrap on to the next row.
 
 =item B<y> ()
 
@@ -1777,8 +2039,11 @@ Available callback names are:
   SCROLL_DOWN   about to scroll down (arg1=top row, arg2=num to scroll)
   SCROLL_UP     about to scroll up (ditto)
   UNKNOWN       unknown/unsupported code (arg1=name, arg2=code/sequence)
+  STRING        string received (arg1=source, eg PM, APC, arg2=string)
   XICONNAME     xterm icon name to be changed to arg1
-  XWINTITLE     xterm title name to be changed to arg2
+  XWINTITLE     xterm title name to be changed to arg1
+  LINEFEED      line feed about to be processed (arg1=row)
+  GOTO          cursor about to be moved (args=new pos)
 
 Note that the wording of the above is significant in terms of exactly
 B<when> the callback is called. For instance, B<CLEAR> is called just
@@ -1795,6 +2060,22 @@ move UP the screen; I<arg1> will be the row number of the bottom of the
 scrolling region, and I<arg2> will be the number of rows to be scrolled.
 Likewise, B<SCROLL_UP> is called when text is about to move down; I<arg1>
 will be the row number of the top of the scrolling region.
+
+The B<STRING> callback is called for escape sequences that contain a string
+that would otherwise be ignored, such as DSC, PM, and APC. The first
+argument is the escape sequence that contained the string, such as DSC, and
+the second argument is the string itself. This callback doesn't get called
+for OSC strings.
+
+The B<LINEFEED> callback can be thought of as "line completed", it's called
+when LF, NEL or IND are about to be processed or just before a line wraps,
+so it generally indicates that an application has finished updating a
+particular line on the screen.  Handy for scrollback buffer processing.
+
+The B<GOTO> callback is only called just before the cursor is explicitly
+moved, by one of CUU, CUD, VPR, CUF, HPR, CUB, CNL, CPL, CHA, HPA, CUP, HVP.
+The parameters give the destination column and row, without taking scrolling
+and boundaries into account.
 
 Finally, note that B<ROWCHANGE> is only triggered when text is being entered;
 screen scrolling or screen clearance does not trigger it, that would
@@ -1822,6 +2103,8 @@ The following sequences are supported:
 
    ESC 7 (DECSC)   save state
    ESC 8 (DECRC)   restore most recently saved state
+   ESC H (HTS)     set tab stop at current column
+   ESC g           visual beep - treated as BEL
 
    ESC # 8 (DECALN)  DEC screen alignment test - fill screen with E's
 
@@ -1851,6 +2134,7 @@ The following sequences are supported:
    CSI s (CUPSV)   save cursor position
    CSI u (CUPRS)   restore cursor position
    CSI ` (HPA)     move cursor to column in current row
+   CSI g (TBC)     clear tab stop (CSI 3 g = clear all stops)
 
 =head1 LIMITATIONS
 
@@ -1888,12 +2172,12 @@ The following known escape sequences are ignored:
    ESC +K (G3USR)    G3 charset = user defined mapping
    ESC >  (DECPNM)   set numeric keypad mode
    ESC =  (DECPAM)   set application keypad mode
-   ESC H  (HTS)      set tab stop at current column
    ESC N  (SS2)      select G2 charset for next char only
    ESC O  (SS3)      select G3 charset for next char only
    ESC P  (DCS)      device control string (ended by ST)
    ESC X  (SOS)      start of string
    ESC ^  (PM)       privacy message (ended by ST)
+   ESC _  (APC)      application program command (ended by ST)
    ESC \  (ST)       string terminator
    ESC n  (LS2)      invoke G2 charset
    ESC o  (LS3)      invoke G3 charset
@@ -1903,7 +2187,6 @@ The following known escape sequences are ignored:
 
 The following known CSI (ESC [) sequences are ignored:
 
-   CSI g (TBC)     clear tab stop (CSI 3 g = clear all stops)
    CSI q (DECLL)   set keyboard LEDs
 
 The following known CSI (ESC [) sequences are only partially supported:
@@ -1920,7 +2203,7 @@ distribution.
 =head1 AUTHORS
 
 Copyright (C) 2003 Andrew Wood C<E<lt>andrew dot wood at ivarch dot comE<gt>>.
-Distributed under the terms of the Artistic License.
+Distributed under the terms of the Artistic License 2.0.
 
 Credit is also due to:
 
@@ -1936,6 +2219,9 @@ Credit is also due to:
   Paul L. Stoddard
     - reported a possible bug in cursor movement handling
 
+  Joerg Walter
+    - provided a patch for Unicode handling
+
 =head1 THINGS TO WATCH OUT FOR
 
 Make sure that your code understands NULL (\000) - you will get this in
@@ -1944,6 +2230,14 @@ sequence "12\e[C34" ("12", "CUF (move right)", "34") you might think would
 yield the string "12 34", but in fact it can also yield "12\00034" - that
 is, "12" followed by a zero byte followed by "34".  This is because the
 screen's contents defaults to zeroes, not spaces.
+
+To avoid that, use B<row_plaintext>, which will convert NULLs to spaces,
+instead of B<row_text>.
+
+Different types of terminal disagree on certain corner cases. For example,
+B<gnome-terminal> and B<screen> handle TAB stops and TABbing past the end of
+the screen in slightly different ways. Term::VT102 is closer to B<screen> in
+the way it handles this sort of thing.
 
 =head1 SEE ALSO
 

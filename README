@@ -28,3 +28,6 @@ Credit is also due to:
   Paul L. Stoddard
     - reported a possible bug in cursor movement handling
 
+  Joerg Walter
+    - provided a patch for Unicode handling
+

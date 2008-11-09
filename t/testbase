@@ -85,6 +85,10 @@ sub run_tests {
 	
 		if ($passed == 0) {
 			print "not ok $i\n";
+			print STDERR "screen contents ($cols x $rows):\n";
+			for (my $dumprow = 1; $dumprow <= $rows; $dumprow++) {
+				print STDERR "[" . $vt->row_plaintext ($dumprow) . "]\n";
+			}
 		} else {
 			print "ok $i\n";
 		}

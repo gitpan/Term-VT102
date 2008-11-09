@@ -6,6 +6,7 @@ Makefile.PL
 README
 TODO
 VT102.pm
+VT102/examples/sanitize-dump.pl
 VT102/examples/ssh-usage.pl
 VT102/examples/telnet-usage.pl
 t/01-load.t
@@ -20,5 +21,7 @@ t/09-callback.t
 t/10-decaln.t
 t/11-decscrc.t
 t/12-cupsvrs.t
+t/13-xonxoff.t
+t/14-tabstop.t
 t/testbase
 META.yml                                 Module meta-data (added by MakeMaker)

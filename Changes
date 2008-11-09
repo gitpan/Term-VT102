@@ -1,5 +1,16 @@
 Changes that have been made over time:
 
+0.91 - 9 November 2008
+  - patch from Joerg Walter to fix Unicode handling
+  - minor escape sequence processing cleanup
+  - properly ignore / process sequences ending in ESC \
+  - new callback STRING for receiving strings from the above
+  - new method to return row text with SGR colour/attributes
+  - fixed line wrapping to wrap AFTER last column filled
+  - implemented tab stops
+  - added example script that strips control codes from log files
+  - new GOTO and LINEFEED callbacks
+
 0.82 - 29 September 2004
   - added example script showing how to use Term::VT102 with SSH
   - minor undef warning fix in SM/RM handling
